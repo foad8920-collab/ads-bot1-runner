@@ -232,14 +232,17 @@ async function downloadImage(imageUrl) {
     return imagePath;
 }
 
-// 🎯 دالة إحماء الجلسة (زيارة فيسبوك الرئيسي قبل فتح المجموعة لتجنب الـ Checkpoint)
+// 🎯 دالة إحماء الجلسة الخاصة بالصفحة
 async function warmupSession(page) {
     try {
-        await logToDashboard(`☕ [Warm-up] جاري زيارة الصفحة الرئيسية لتسخين وتثبيت الجلسة...`, 'info');
+        await logToDashboard(`☕ [Warm-up] تثبيت جلسة الصفحة والتأكد من استقرار الجلسة...`, 'info');
+        
+        // فتح فيسبوك وتثبيت الكوكيز لـ 15 ثانية
         await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await sleep(10000);
+        await sleep(15000);
+
         if (page.url().includes('login') || page.url().includes('checkpoint')) {
-            throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب أثناء الإحماء');
+            throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب');
         }
     } catch (e) {
         if (e.message.includes('Checkpoint')) throw e;
