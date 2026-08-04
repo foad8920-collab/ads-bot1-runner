@@ -668,30 +668,31 @@ async function processOnePostBot1(initialPostData) {
 
             if (!freshData) break;
 
-            if (freshData.bot1_status === 'stopped') {
+            // 🛠️ الاعتماد على عمود status الخاص بالبوت 1
+            if (freshData.status === 'stopped') {
                 await logToDashboard(`🛑 تم إيقاف البوت الأول يدوياً بطلب من المستخدم!`, 'info');
                 await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
                 break;
             }
 
-            while (freshData.bot1_status === 'paused') {
+            while (freshData.status === 'paused') {
                 await logToDashboard(`⏸️ البوت الأول في حالة إيقاف مؤقت (Paused)، يرجى الانتظار...`, 'info');
                 await supabase.from('bot_counters').update({ status: 'PAUSED' }).eq('bot_name', BOT_ID);
                 await sleep(10000);
                 const { data: pauseCheck } = await supabase
                     .from('publish_queue')
-                    .select('bot1_status')
+                    .select('status')
                     .eq('id', initialPostData.id)
                     .single();
                 
-                if (!pauseCheck || pauseCheck.bot1_status === 'stopped') break;
-                if (pauseCheck.bot1_status === 'running') {
-                    freshData.bot1_status = 'running';
+                if (!pauseCheck || pauseCheck.status === 'stopped') break;
+                if (pauseCheck.status === 'running') {
+                    freshData.status = 'running';
                     break;
                 }
             }
 
-            if (freshData.bot1_status === 'stopped') break;
+            if (freshData.status === 'stopped') break;
 
             if (freshData.skip_current_group === true) {
                 await logToDashboard(`⏭️ تم طلب تخطي المجموعة الحالية بطلب من المستخدم، جاري الانتقال للتالي...`, 'info');
@@ -729,9 +730,9 @@ async function processOnePostBot1(initialPostData) {
 
                 await logToDashboard(`🎉 اكتملت جميع المجموعات للحساب (1)! الحالة النهائية: (${finalStatus})`, 'success');
 
+                // 🛠️ تحديث عمود status الأصلي للبوت 1
                 await supabase.from('publish_queue').update({
                     status: finalStatus,
-                    bot1_status: 'stopped',
                     bot1_group: null,
                     ai_final_text1: null
                 }).eq('id', initialPostData.id);
@@ -780,8 +781,7 @@ async function processOnePostBot1(initialPostData) {
                 const currentSuccessCount = latestSuccessPost?.success_count || 0;
                 const newSuccessCount = currentSuccessCount + 1;
                 
-                // 🛠️ الإصلاح الجوهري: تفريغ bot1_group في Supabase وفي المتغير المحلي بضمان تام
-                botGroup = null; // ❌ تفريغ الذاكرة المحلية فوراً لمنع التكرار
+                botGroup = null; // ❌ تفريغ المتغير المحلي بضمان تام لمنع إعادة النشر
                 
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
@@ -827,7 +827,7 @@ async function processOnePostBot1(initialPostData) {
 
                 await logToDashboard(`❌ خطأ أثناء النشر في المجموعة (${targetGroup.name}): ${err.message}`, 'error');
                 
-                botGroup = null; // ❌ تفريغ الذاكرة المحلية في حالة الخطأ أيضاً
+                botGroup = null;
                 
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
@@ -855,12 +855,13 @@ async function processOnePostBot1(initialPostData) {
     }
 }
 
+// 🛠️ تعديل الدالة لتقرأ من عمود status الأصلي في Supabase
 async function resetStuckBot1Posts() {
     await logToDashboard(`🔄 جاري فحص الإعلانات العالقة (processing) للبوت الأول لإعادتها إلى (running)...`, 'info');
     const { error } = await supabase
         .from('publish_queue')
-        .update({ bot1_status: 'running' })
-        .eq('bot1_status', 'processing');
+        .update({ status: 'running' })
+        .eq('status', 'processing');
 
     if (error) {
         await logToDashboard(`⚠️ خطأ في إعادة ضبط الإعلانات العالقة: ${error.message}`, 'error');
@@ -916,12 +917,13 @@ async function startBot1Engine() {
                 process.exit(0);
             }
 
-            await supabase.from('publish_queue').update({ bot1_status: 'processing' }).eq('id', postToRun.id);
+            // 🛠️ تحديث عمود status الأصلي للبوت الأول
+            await supabase.from('publish_queue').update({ status: 'processing' }).eq('id', postToRun.id);
             await supabase.from('bot_counters').update({ status: 'RUNNING' }).eq('bot_name', BOT_ID);
 
             await processOnePostBot1(postToRun);
 
-            await supabase.from('publish_queue').update({ bot1_status: 'stopped' }).eq('id', postToRun.id);
+            await supabase.from('publish_queue').update({ status: 'stopped' }).eq('id', postToRun.id);
 
             const macroDelay = randomDelay(900, 1800);
             await logToDashboard(`⏳ استراحة الإعلانات الكبرى للبوت 1: انتظار ${Math.round(macroDelay / 1000 / 60)} دقيقة...`, 'info');
