@@ -13,7 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const TEMP_DIR = path.join(os.tmpdir(), 'bot1-temp-files');
 const ACCOUNT_NAME = 'الحساب (1)';
-const BOT_ID = 'bot1';
+const BOT_ID = 'bot1'; // المعرف الخاص بهذا البوت في جدول العدادات
 
 // 🧠 0. دالة حساب استهلاك الذاكرة
 function getMemoryLog() {
@@ -54,9 +54,10 @@ async function checkAndResetCounter(botName) {
     }
 }
 
-// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات
+// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول
 async function logPublishSuccess(botName, adId, adTitle, groupName) {
     try {
+        // تسجيل المجموعة المنشور فيها في جدول bot_publish_logs
         await supabase
             .from('bot_publish_logs')
             .insert([{
@@ -67,6 +68,7 @@ async function logPublishSuccess(botName, adId, adTitle, groupName) {
                 status: 'SUCCESS'
             }]);
 
+        // زيادة العداد اليومي والإجمالي في bot_counters
         const { data } = await supabase
             .from('bot_counters')
             .select('daily_count, total_count')
@@ -232,12 +234,10 @@ async function downloadImage(imageUrl) {
     return imagePath;
 }
 
-// 🎯 دالة إحماء الجلسة الخاصة بالصفحة
+// 🎯 دالة إحماء الجلسة (تثبيت الجلسة بفتح الفيسبوك الرئيسي لمنع التشيك بوينت)
 async function warmupSession(page) {
     try {
-        await logToDashboard(`☕ [Warm-up] تثبيت جلسة الصفحة والتأكد من استقرار الجلسة...`, 'info');
-        
-        // فتح فيسبوك وتثبيت الكوكيز لـ 15 ثانية
+        await logToDashboard(`☕ [Warm-up] تثبيت جلسة الحساب وتأكيد الاتصال...`, 'info');
         await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
         await sleep(15000);
 
@@ -389,13 +389,13 @@ async function pasteTextWithLines(page, postText) {
 
 // 🚀 دالة النشر الفعلي للمجموعة
 async function publishToGroup(page, group, post, imagePath) {
-    // 🌟 خطوة الإحماء والتسخين لمنع كشف بيئة GitHub Actions
+    // 🌟 خطوة الإحماء والتسخين قبل النشر
     await warmupSession(page);
 
     await logToDashboard(`📢 فتح رابط مجموعة البوت: ${group.name} | الرابط: ${group.url}`, 'info');
     
-    // ⏳ إعطاء مهلة مرنة للمتصفح (120 ثانية) للتعامل مع أي بطء طارئ
-await page.goto(group.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    // ⚡ تم تخفيض المهلة لـ 45 ثانية لأن الصفحات ستفتح بسرعة الصاروخ بدون البروكسي
+    await page.goto(group.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     
     await logToDashboard(`⏳ تم تحميل الصفحة، ننتظر 45 ثانية كاملة لاستقرار عناصر الصفحة وبناء السكربتات...`, 'info');
     await sleep(45000); 
@@ -466,10 +466,10 @@ await page.goto(group.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
     
     await sleep(6000); 
 
-    let postText = post.ai_final_text || '';
+    let postText = post.ai_final_text1 || '';
     
     if (!postText || postText.trim() === '') {
-        await logToDashboard(`🧠 [AI] العمود ai_final_text فارغ، جاري صياغة نص جديد خصيصاً لمجموعة: ${group.name}...`, 'info');
+        await logToDashboard(`🧠 [AI] العمود ai_final_text1 فارغ، جاري صياغة نص جديد خصيصاً لمجموعة: ${group.name}...`, 'info');
         const aiGeneratedContent = await rewriteAdWithAI(post.ad_title, post.ad_description);
         postText = `${aiGeneratedContent}\n\n🔥 إعلان جديد على سوق الإعلانات الحديث`;
 
@@ -478,10 +478,10 @@ await page.goto(group.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
             postText += `\n\n${fbUrl.trim()}`;
         }
         
-        await supabase.from('publish_queue').update({ ai_final_text: postText }).eq('id', post.id);
-        await logToDashboard(`💾 [Supabase] تم حفظ النص النهائي الخاص بهذه المجموعة في عمود (ai_final_text).`, 'success');
+        await supabase.from('publish_queue').update({ ai_final_text1: postText }).eq('id', post.id);
+        await logToDashboard(`💾 [Supabase] تم حفظ النص النهائي الخاص بهذه المجموعة في عمود (ai_final_text1).`, 'success');
     } else {
-        await logToDashboard(`📌 [Supabase] تم جلب النص الجاهز من عمود (ai_final_text).`, 'success');
+        await logToDashboard(`📌 [Supabase] تم جلب النص الجاهز من عمود (ai_final_text1).`, 'success');
     }
 
     await logToDashboard(`📝 [Text] النص النهائي الذي سيتم لصقه:\n${postText}`, 'info');
@@ -535,6 +535,7 @@ await page.goto(group.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
 
 // 🔄 دالة معالجة إعلان واحد للبوت الأول
 async function processOnePostBot1(initialPostData) {
+    // 🌟 تصفير العداد اليومي وفحصه
     const currentDailyCount = await checkAndResetCounter(BOT_ID);
     if (currentDailyCount >= 15) {
         await logToDashboard(`⚠️ تم الوصول للحد الأقصى اليومي المسموح به لـ ${BOT_ID} (15 منشوراً). يتوقف البوت لحماية الحساب.`, 'info');
@@ -542,7 +543,7 @@ async function processOnePostBot1(initialPostData) {
         return;
     }
 
-    const cookiesRaw = await getSetting('FB_COOKIES_BOT1') || await getSetting('FB_COOKIES');
+    const cookiesRaw = await getSetting('FB_COOKIES_BOT1');
     if (!cookiesRaw) {
         await logToDashboard(`❌ ملف الكوكيز للبوت الأول غير موجود في جدول system_settings!`, 'error');
         return;
@@ -569,8 +570,7 @@ async function processOnePostBot1(initialPostData) {
         }
     }
 
-    const proxyUrl = await getSetting('FB_PROXY_BOT1') || await getSetting('PROXY_URL');
-
+    // 🚀 خيارات تشغيل المتصفح بالسرعة الكاملة والتخفي التام (بدون البروكسي البطيء)
     const launchOptions = {
         headless: true,
         args: [
@@ -596,11 +596,9 @@ async function processOnePostBot1(initialPostData) {
         ]
     };
 
-    if (proxyUrl && proxyUrl.trim() !== '') {
-        launchOptions.proxy = { server: proxyUrl.trim() };
-        await logToDashboard(`🌐 تم دمج وتفعيل البروكسي بنجاح: ${proxyUrl}`, 'success');
-    }
+    await logToDashboard(`⚡ تم تشغيل المتصفح بالسرعة المباشرة وبدون بروكسي بطيء`, 'info');
 
+    // 🚀 إطلاق المتصفح
     const browser = await chromium.launch(launchOptions);
 
     const context = await browser.newContext({
@@ -658,35 +656,37 @@ async function processOnePostBot1(initialPostData) {
 
             if (!freshData) break;
 
-            const bot1Status = freshData.bot1_status || freshData.status;
-
-            if (bot1Status === 'stopped') {
+            if (freshData.bot1_status === 'stopped') {
                 await logToDashboard(`🛑 تم إيقاف البوت الأول يدوياً بطلب من المستخدم!`, 'info');
                 await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
                 break;
             }
 
-            while (bot1Status === 'paused') {
+            while (freshData.bot1_status === 'paused') {
                 await logToDashboard(`⏸️ البوت الأول في حالة إيقاف مؤقت (Paused)، يرجى الانتظار...`, 'info');
                 await supabase.from('bot_counters').update({ status: 'PAUSED' }).eq('bot_name', BOT_ID);
                 await sleep(10000);
                 const { data: pauseCheck } = await supabase
                     .from('publish_queue')
-                    .select('bot1_status, status')
+                    .select('bot1_status')
                     .eq('id', initialPostData.id)
                     .single();
                 
-                const checkStatus = pauseCheck?.bot1_status || pauseCheck?.status;
-                if (!pauseCheck || checkStatus === 'stopped') break;
-                if (checkStatus === 'running') break;
+                if (!pauseCheck || pauseCheck.bot1_status === 'stopped') break;
+                if (pauseCheck.bot1_status === 'running') {
+                    freshData.bot1_status = 'running';
+                    break;
+                }
             }
+
+            if (freshData.bot1_status === 'stopped') break;
 
             if (freshData.skip_current_group === true) {
                 await logToDashboard(`⏭️ تم طلب تخطي المجموعة الحالية بطلب من المستخدم، جاري الانتقال للتالي...`, 'info');
                 await supabase.from('publish_queue').update({
                     skip_current_group: false,
                     bot1_group: null,
-                    ai_final_text: null
+                    ai_final_text1: null
                 }).eq('id', initialPostData.id);
                 continue;
             }
@@ -721,7 +721,7 @@ async function processOnePostBot1(initialPostData) {
                     status: finalStatus,
                     bot1_status: 'stopped',
                     bot1_group: null,
-                    ai_final_text: null
+                    ai_final_text1: null
                 }).eq('id', initialPostData.id);
 
                 await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
@@ -770,11 +770,11 @@ async function processOnePostBot1(initialPostData) {
                 
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
-                    ai_final_text: null,
+                    ai_final_text1: null,
                     success_count: newSuccessCount
                 }).eq('id', initialPostData.id);
 
-                await logToDashboard(`🧹 تم تصفير (ai_final_text) وقروب البوت وتحديث العداد لـ (${newSuccessCount}).`, 'success');
+                await logToDashboard(`🧹 تم تصفير (ai_final_text1) وقروب البوت وتحديث العداد لـ (${newSuccessCount}).`, 'success');
 
                 const { data: checkData } = await supabase.from('publish_queue').select('groups_json').eq('id', initialPostData.id).single();
                 let currentRemaining = [];
@@ -814,7 +814,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
-                    ai_final_text: null,
+                    ai_final_text1: null,
                     failed_count: newFailedCount,
                     error_message: JSON.stringify(failedGroups)
                 }).eq('id', initialPostData.id);
@@ -840,16 +840,14 @@ async function processOnePostBot1(initialPostData) {
 
 async function resetStuckBot1Posts() {
     await logToDashboard(`🔄 جاري فحص الإعلانات العالقة (processing) للبوت الأول لإعادتها إلى (running)...`, 'info');
-    
-    await supabase
+    const { error } = await supabase
         .from('publish_queue')
         .update({ bot1_status: 'running' })
         .eq('bot1_status', 'processing');
 
-    await supabase
-        .from('publish_queue')
-        .update({ status: 'running' })
-        .eq('status', 'processing');
+    if (error) {
+        await logToDashboard(`⚠️ خطأ في إعادة ضبط الإعلانات العالقة: ${error.message}`, 'error');
+    }
 }
 
 async function startBot1Engine() {
@@ -895,7 +893,7 @@ async function startBot1Engine() {
             }
 
             if (!postToRun) {
-                await logToDashboard(`🎉 اكتملت جميع المهام في الطابور للحساب (1)، تم إنهاء الجلسة بنجاح!`, 'success');
+                await logToDashboard(`🎉 اكتملت جميع المهام في الطابور، تم إنهاء الجلسة السحابية بنجاح!`, 'success');
                 await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
                 console.log("✅ لا توجد إعلانات تحتوي على مجموعات قيد الانتظار، جاري إغلاق السكربت...");
                 process.exit(0);
