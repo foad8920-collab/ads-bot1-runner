@@ -763,6 +763,20 @@ async function processOnePostBot1(initialPostData) {
                 await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
             }
 
+            // 💡 --- إضافة فحص التكرار (الحل العبقري) ---
+            const { data: logData, error: logError } = await supabase
+                .from('bot_publish_logs')
+                .select('id')
+                .eq('ad_id', initialPostData.id)
+                .eq('group_name', targetGroup.name);
+
+            if (logData && logData.length > 0) {
+                await logToDashboard(`🛡️ [حماية] تم اكتشاف أن المجموعة (${targetGroup.name}) نُشر فيها مسبقاً بنجاح! سيتم تخطيها وحذفها...`, 'warn');
+                await supabase.from('publish_queue').update({ bot1_group: null }).eq('id', initialPostData.id);
+                continue;
+            }
+            // ------------------------------------------
+
             const page = await context.newPage();
             try {
                 const publishTask = publishToGroup(page, targetGroup, freshData, imagePath);
