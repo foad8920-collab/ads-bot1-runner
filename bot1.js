@@ -668,11 +668,10 @@ async function processOnePostBot1(initialPostData) {
 
             if (!freshData) break;
 
-            // 🛠️ الاعتماد على عمود status الخاص بالبوت 1
-            if (freshData.status === 'stopped') {
-                await logToDashboard(`🛑 تم إيقاف البوت الأول يدوياً بطلب من المستخدم!`, 'info');
+           if (freshData.status === 'stopped') {
+                await logToDashboard(`🛑 تم إيقاف البوت الأول يدوياً بطلب من المستخدم، جاري إنهاء الجلسة السحابية بالكامل!`, 'info');
                 await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
-                break;
+                process.exit(0); // ✅ إغلاق السكربت وإنهاء الجلسة في GitHub فوراً
             }
 
             while (freshData.status === 'paused') {
