@@ -3,6 +3,11 @@ name: Run Facebook Bot 1
 on:
   workflow_dispatch:
 
+# 🔒 منع التزامن وتكرار التشغيل: يوقف أي جلسة سابقة شغالة للبوت1 فوراً عند إطلاق جلسة جديدة
+concurrency:
+  group: bot1-execution-group
+  cancel-in-progress: true
+
 jobs:
   run-bot1:
     runs-on: ubuntu-latest
