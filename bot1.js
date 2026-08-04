@@ -684,7 +684,11 @@ async function processOnePostBot1(initialPostData) {
                     .eq('id', initialPostData.id)
                     .single();
                 
-                if (!pauseCheck || pauseCheck.status === 'stopped') break;
+                if (!pauseCheck || pauseCheck.status === 'stopped') {
+                    await logToDashboard(`🛑 تم إيقاف البوت الأول يدوياً بطلب من المستخدم، جاري إنهاء الجلسة السحابية بالكامل!`, 'info');
+                    await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
+                    process.exit(0);
+                }
                 if (pauseCheck.status === 'running') {
                     freshData.status = 'running';
                     break;
