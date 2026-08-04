@@ -54,19 +54,25 @@ async function checkAndResetCounter(botName) {
     }
 }
 
-// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول
+// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول (معدلة لحفظ الوقت وضمان ظهور السجل)
 async function logPublishSuccess(botName, adId, adTitle, groupName) {
     try {
-        // تسجيل المجموعة المنشور فيها في جدول bot_publish_logs
-        await supabase
+        // تسجيل المجموعة المنشور فيها في جدول bot_publish_logs مع إضافة وقت النشر
+        const { error: insertError } = await supabase
             .from('bot_publish_logs')
             .insert([{
                 bot_name: botName,
                 ad_id: adId,
                 ad_title: adTitle || 'إعلان بدون عنوان',
                 group_name: groupName,
-                status: 'SUCCESS'
+                status: 'SUCCESS',
+                published_at: new Date().toISOString()
             }]);
+
+        if (insertError) {
+            console.error("❌ خطأ Supabase في حفظ سجل النشر:", insertError.message);
+            await logToDashboard(`❌ فشل حفظ اللوج في الجدول: ${insertError.message}`, 'error');
+        }
 
         // زيادة العداد اليومي والإجمالي في bot_counters
         const { data } = await supabase
