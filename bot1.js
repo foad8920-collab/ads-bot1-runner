@@ -780,6 +780,9 @@ async function processOnePostBot1(initialPostData) {
                 const currentSuccessCount = latestSuccessPost?.success_count || 0;
                 const newSuccessCount = currentSuccessCount + 1;
                 
+                // 🛠️ الإصلاح الجوهري: تفريغ bot1_group في Supabase وفي المتغير المحلي بضمان تام
+                botGroup = null; // ❌ تفريغ الذاكرة المحلية فوراً لمنع التكرار
+                
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
                     ai_final_text1: null,
@@ -796,7 +799,7 @@ async function processOnePostBot1(initialPostData) {
                     try { currentRemaining = JSON.parse(checkData.groups_json || '[]'); } catch(e){}
                 }
 
-                if (currentRemaining.length > 0 || botGroup) {
+                if (currentRemaining.length > 0) {
                     const longBreak = randomDelay(180, 300);
                     await logToDashboard(`⏳ استراحة أمان لحماية الحساب لمدة ${Math.round(longBreak / 1000 / 60)} دقائق قبل المجموعة التالية...`, 'info');
                     await sleep(longBreak);
@@ -823,6 +826,8 @@ async function processOnePostBot1(initialPostData) {
                 failedGroups.push({ name: targetGroup.name, url: targetGroup.url, error: err.message });
 
                 await logToDashboard(`❌ خطأ أثناء النشر في المجموعة (${targetGroup.name}): ${err.message}`, 'error');
+                
+                botGroup = null; // ❌ تفريغ الذاكرة المحلية في حالة الخطأ أيضاً
                 
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
