@@ -1,6 +1,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
-const path = path = require('path');
+const path = require('path');
 const os = require('os');
 const axios = require('axios');
 const express = require('express');
@@ -12,7 +12,7 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_l1IbZF35GnYYS8P
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const TEMP_DIR = path.join(os.tmpdir(), 'bot1-temp-files');
-const ACCOUNT_NAME = 'الحساب (1)';
+const ACCOUNT_NAME = 'الحساب الرئيسي (1)';
 const BOT_ID = 'bot1'; // المعرف الخاص بهذا البوت في جدول العدادات
 
 // 🛑 دالة الإيقاف الفوري للجلسة والسيرفر (تتعامل مع Render و GitHub Actions)
@@ -265,24 +265,25 @@ async function downloadImage(imageUrl) {
     return imagePath;
 }
 
-// 🎯 دالة إحماء الجلسة المتقدمة
+// 🎯 دالة إحماء الجلسة المتقدمة بأسلوب محاكي للبشر (خاصة للبوت الأول الرئيسي)
 async function warmupSession(page) {
     try {
-        await logToDashboard(`☕ [Warm-up] تسجيل الدخول وتصفح آخر الأخبار لإعادة تنشيط الجلسة الخاملة...`, 'info');
+        await logToDashboard(`☕ [Warm-up Primary] تسجيل الدخول وتصفح آخر الأخبار بأسلوب بشري طبعي للحساب الرئيسي...`, 'info');
         
         await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await sleep(randomDelay(8, 12));
+        await sleep(randomDelay(8, 14));
 
         if (page.url().includes('login') || page.url().includes('checkpoint')) {
-            throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب');
+            throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب الرئيسي');
         }
 
-        await page.evaluate(() => window.scrollBy(0, 300));
-        await sleep(randomDelay(4, 7));
-        await page.evaluate(() => window.scrollBy(0, 500));
-        await sleep(randomDelay(5, 8));
+        // محاكاة السلوك البشري في التمرير والتصفح
+        await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 250) + 150));
+        await sleep(randomDelay(4, 8));
+        await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 350) + 200));
+        await sleep(randomDelay(5, 9));
 
-        await logToDashboard(`✅ تم إحماء الجلسة بنجاح واستقرار الحساب!`, 'success');
+        await logToDashboard(`✅ تم إحماء جلسة البوت الرئيسي واستقرار الصفحة!`, 'success');
     } catch (e) {
         if (e.message.includes('Checkpoint')) throw e;
         await logToDashboard(`⚠️ تنبيه أثناء الإحماء: ${e.message}`, 'warn');
@@ -427,11 +428,11 @@ async function pasteTextWithLines(page, postText) {
     }
 }
 
-// 🚀 دالة النشر الفعلي للمجموعة
+// 🚀 دالة النشر الفعلي للمجموعة (البوت الرئيسي)
 async function publishToGroup(page, group, post, imagePath) {
     await warmupSession(page);
 
-    await logToDashboard(`📢 فتح رابط مجموعة البوت: ${group.name} | الرابط: ${group.url}`, 'info');
+    await logToDashboard(`📢 فتح رابط مجموعة البوت الرئيسي: ${group.name} | الرابط: ${group.url}`, 'info');
     
     await page.goto(group.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     
@@ -439,7 +440,7 @@ async function publishToGroup(page, group, post, imagePath) {
     await sleep(45000); 
 
     if (page.url().includes('login') || page.url().includes('checkpoint')) {
-        throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب');
+        throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب الرئيسي');
     }
 
     const opened = await openPostBox(page);
@@ -753,7 +754,7 @@ async function processOnePostBot1(initialPostData) {
                 const finalFailed = finalCheck?.failed_count || 0;
                 const finalStatus = finalFailed > 0 ? 'failed' : 'published';
 
-                await logToDashboard(`🎉 اكتملت جميع المجموعات للحساب (1)! الحالة النهائية: (${finalStatus})`, 'success');
+                await logToDashboard(`🎉 اكتملت جميع المجموعات للحساب الرئيسي (1)! الحالة النهائية: (${finalStatus})`, 'success');
 
                 await supabase.from('publish_queue').update({
                     status: finalStatus,
@@ -840,8 +841,9 @@ async function processOnePostBot1(initialPostData) {
                 }
 
                 if (currentRemaining.length > 0) {
-                    const longBreak = randomDelay(180, 300);
-                    await logToDashboard(`⏳ استراحة أمان لحماية الحساب لمدة ${Math.round(longBreak / 1000 / 60)} دقائق قبل المجموعة التالية...`, 'info');
+                    // ⏱️ فواصل زمنية متغيرة وبشرية للبوت الرئيسي (من 4 إلى 8 دقائق)
+                    const longBreak = randomDelay(240, 480);
+                    await logToDashboard(`⏳ استراحة أمان للبوت الرئيسي 1 لمدة ${Math.round(longBreak / 1000 / 60)} دقائق قبل المجموعة التالية...`, 'info');
                     await sleep(longBreak);
                 }
 
@@ -908,7 +910,7 @@ async function resetStuckBot1Posts() {
 }
 
 async function startBot1Engine() {
-    await logToDashboard(`🚀 تم تشغيل محرك البوت الأول الذاتي بنجاح...`, 'success');
+    await logToDashboard(`🚀 تم تشغيل محرك البوت الأول الرئيسي الذاتي بنجاح...`, 'success');
     
     // 💡 التحديث الفوري للحالة لمنع التوقف الخاطئ عند البداية
     await supabase.from('bot_counters').update({ status: 'RUNNING' }).eq('bot_name', BOT_ID);
