@@ -1,6 +1,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
-const path = require('path');
+const path = path = require('path');
 const os = require('os');
 const axios = require('axios');
 const express = require('express');
@@ -14,6 +14,26 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const TEMP_DIR = path.join(os.tmpdir(), 'bot1-temp-files');
 const ACCOUNT_NAME = 'الحساب (1)';
 const BOT_ID = 'bot1'; // المعرف الخاص بهذا البوت في جدول العدادات
+
+// 🛑 دالة الإيقاف الفوري للجلسة والسيرفر (تتعامل مع Render و GitHub Actions)
+async function forceKillProcess(reason = 'طلب إيقاف من المستخدم') {
+    await logToDashboard(`🛑 ${reason} | جاري إنهاء العمل وإغلاق الجلسة فوراً...`, 'warn');
+    
+    if (process.env.GITHUB_ACTIONS && process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID) {
+        try {
+            await axios.post(
+                `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}/cancel`,
+                {},
+                { headers: { Authorization: `token ${process.env.GITHUB_TOKEN}` } }
+            );
+            await logToDashboard(`🛑 تم إرسال أمر cancel-run للـ Workflow في GitHub Actions بنجاح.`, 'info');
+        } catch (e) {
+            console.error("فشل إلغاء Workflow عبر GitHub API:", e.message);
+        }
+    }
+
+    process.exit(0);
+}
 
 // 🧠 0. دالة حساب استهلاك الذاكرة
 function getMemoryLog() {
@@ -54,11 +74,14 @@ async function checkAndResetCounter(botName) {
     }
 }
 
-// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول (معدلة لضبط الوقت الفعلي بدقة)
-async function logPublishSuccess(botName, adId, adTitle, groupName) {
+// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول (معدلة لضبط الوقت الفعلي بدقة ونص AI)
+async function logPublishSuccess(botName, adId, actualPostText, groupName) {
     try {
-        // 🛠️ توليد الوقت المحلي الدقيق بتوقيت السعودية لضمان تطابقه مع وقت النشر الفعلي
-        const exactPublishTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Riyadh' })).toISOString();
+        // 🛠️ توليد الوقت المحلي الدقيق بتوقيت السعودية لمنع تحويل الساعات لـ UTC
+        const exactPublishTime = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Riyadh' }).replace(' ', 'T');
+
+        // قطع جزء مناسب من نص الذكاء الاصطناعي الفعلي بدلاً من النص الثابت
+        const displayTitle = actualPostText ? (actualPostText.substring(0, 120) + '...') : 'إعلان بدون عنوان';
 
         // تسجيل المجموعة المنشور فيها في جدول bot_publish_logs مع الوقت المضبوط صراحة
         const { error: insertError } = await supabase
@@ -66,7 +89,7 @@ async function logPublishSuccess(botName, adId, adTitle, groupName) {
             .insert([{
                 bot_name: botName,
                 ad_id: adId,
-                ad_title: adTitle || 'إعلان بدون عنوان',
+                ad_title: displayTitle,
                 group_name: groupName,
                 status: 'SUCCESS',
                 published_at: exactPublishTime
@@ -544,8 +567,8 @@ async function publishToGroup(page, group, post, imagePath) {
     
     await logToDashboard(`✅ تم النشر في مجموعة البوت بنجاح تام: ${group.name}`, 'success');
 
-    // 🌟 تسجيل عملية النشر في العدادات وسجل اليوم الحي
-    await logPublishSuccess(BOT_ID, post.id, post.ad_title, group.name);
+    // 🌟 تسجيل عملية النشر مع النص الفعلي المصاغ
+    await logPublishSuccess(BOT_ID, post.id, postText, group.name);
 }
 
 // 🔄 دالة معالجة إعلان واحد للبوت الأول
@@ -660,17 +683,14 @@ async function processOnePostBot1(initialPostData) {
         await logToDashboard(`🍪 تم حقن الكوكيز بنجاح وتأمين الجلسة!`, 'success');
 
         while (true) {
-            // 🛑 [فحص أمني]: التحقق من حالة كرت الإيقاف في bot_counters
+            // 🛑 1. فحص كروت الإيقاف الفورية الشاملة
             const { data: counterStatus } = await supabase
                 .from('bot_counters')
                 .select('status')
                 .eq('bot_name', BOT_ID)
                 .single();
 
-            if (counterStatus && counterStatus.status === 'IDLE') {
-                await logToDashboard(`🛑 تم رصد حالة الإيقاف (IDLE) للبوت الأول، يتوقف عن العمل فوراً ويُغلق المتصفح...`, 'warn');
-                process.exit(0);
-            }
+            const isCounterStopped = counterStatus && ['IDLE', 'STOPPED', 'PAUSED'].includes(counterStatus.status);
 
             const { data: freshData } = await supabase
                 .from('publish_queue')
@@ -678,56 +698,34 @@ async function processOnePostBot1(initialPostData) {
                 .eq('id', initialPostData.id)
                 .single();
 
-            if (!freshData) break;
+            const isQueueStopped = !freshData || ['stopped', 'paused'].includes(freshData.status);
 
-            if (freshData.status === 'stopped') {
-                await logToDashboard(`🛑 تم إيقاف البوت الأول يدوياً بطلب من المستخدم، جاري إنهاء الجلسة السحابية بالكامل!`, 'info');
-                await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
-                process.exit(0); 
+            if (isCounterStopped || isQueueStopped) {
+                await browser.close();
+                await forceKillProcess('تم رصد حالة الإيقاف يدوياً من اللوحة');
             }
 
-            while (freshData.status === 'paused') {
-                await logToDashboard(`⏸️ البوت الأول في حالة إيقاف مؤقت (Paused)، يرجى الانتظار...`, 'info');
-                await supabase.from('bot_counters').update({ status: 'PAUSED' }).eq('bot_name', BOT_ID);
-                await sleep(10000);
-
-                const { data: pauseCounterCheck } = await supabase
-                    .from('bot_counters')
-                    .select('status')
-                    .eq('bot_name', BOT_ID)
-                    .single();
-
-                if (pauseCounterCheck && pauseCounterCheck.status === 'IDLE') {
-                    await logToDashboard(`🛑 تم رصد حالة الإيقاف (IDLE) أثناء التوقف المؤقت، جاري إنهاء الجلسة فوراً...`, 'warn');
-                    process.exit(0);
-                }
-
-                const { data: pauseCheck } = await supabase
-                    .from('publish_queue')
-                    .select('status')
-                    .eq('id', initialPostData.id)
-                    .single();
-                
-                if (!pauseCheck || pauseCheck.status === 'stopped') {
-                    await logToDashboard(`🛑 تم إيقاف البوت الأول يدوياً بطلب من المستخدم، جاري إنهاء الجلسة السحابية بالكامل!`, 'info');
-                    await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
-                    process.exit(0);
-                }
-                if (pauseCheck.status === 'running') {
-                    freshData.status = 'running';
-                    break;
-                }
-            }
-
-            if (freshData.status === 'stopped') break;
-
+            // ⏭️ 2. التعامل مع زر تخطي المجموعة الحالية
             if (freshData.skip_current_group === true) {
                 await logToDashboard(`⏭️ تم طلب تخطي المجموعة الحالية بطلب من المستخدم، جاري الانتقال للتالي...`, 'info');
+                
+                let failedGroups = [];
+                try {
+                    if (freshData.error_message) failedGroups = JSON.parse(freshData.error_message);
+                } catch (e) {}
+
+                let currentBotGroup = freshData.bot1_group;
+                let groupName = (typeof currentBotGroup === 'object' && currentBotGroup) ? currentBotGroup.name : 'مجموعة تم تخطيها';
+                
+                failedGroups.push({ name: groupName, error: 'تم تخطي المجموعة يدوياً من المستخدم' });
+
                 await supabase.from('publish_queue').update({
                     skip_current_group: false,
                     bot1_group: null,
-                    ai_final_text1: null
+                    ai_final_text1: null,
+                    error_message: JSON.stringify(failedGroups)
                 }).eq('id', initialPostData.id);
+
                 continue;
             }
 
@@ -793,14 +791,14 @@ async function processOnePostBot1(initialPostData) {
             const { data: logData, error: logError } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
-                .eq('bot_name', BOT_ID)             // 1. التأكد من أن النشر تم عن طريق البوت الأول حصراً
+                .eq('bot_name', BOT_ID)              // 1. التأكد من أن النشر تم عن طريق البوت الأول حصراً
                 .eq('ad_id', initialPostData.id)     // 2. مطابقة رقم الإعلان الحالي
                 .eq('group_name', targetGroup.name)  // 3. مطابقة اسم المجموعة
                 .eq('status', 'SUCCESS');            // 4. أن تكون حالة النشر ناجحة
 
             if (logData && logData.length > 0) {
                 await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! سيتم تخطيها...`, 'warn');
-                await supabase.from('publish_queue').update({ bot1_group: null }).eq('id', initialPostData.id);
+                await supabase.from('publish_queue').update({ bot1_group: null, ai_final_text1: null }).eq('id', initialPostData.id);
                 continue;
             }
             // -----------------------------------------------------------
@@ -927,9 +925,8 @@ async function startBot1Engine() {
                 .eq('bot_name', BOT_ID)
                 .single();
 
-            if (counterStatus && counterStatus.status === 'IDLE') {
-                await logToDashboard(`🛑 تم رصد حالة الإيقاف (IDLE) للبوت الأول في المحرك الرئيسي، جاري الخروج فوراً...`, 'warn');
-                process.exit(0);
+            if (counterStatus && ['IDLE', 'STOPPED', 'PAUSED'].includes(counterStatus.status)) {
+                await forceKillProcess('تم رصد حالة الإيقاف في المحرك الرئيسي');
             }
 
             const { data, error } = await supabase
@@ -970,8 +967,7 @@ async function startBot1Engine() {
             if (!postToRun) {
                 await logToDashboard(`🎉 اكتملت جميع المهام في الطابور، تم إنهاء الجلسة السحابية بنجاح!`, 'success');
                 await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
-                console.log("✅ لا توجد إعلانات تحتوي على مجموعات قيد الانتظار، جاري إغلاق السكربت...");
-                process.exit(0);
+                await forceKillProcess('لا توجد إعلانات تحتوي على مجموعات قيد الانتظار');
             }
 
             await supabase.from('publish_queue').update({ status: 'processing' }).eq('id', postToRun.id);
