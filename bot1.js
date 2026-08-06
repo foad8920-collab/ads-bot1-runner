@@ -857,7 +857,7 @@ async function processOnePostBot1(initialPostData) {
                 const currentFailedCount = latestFailedPost?.failed_count || 0;
                 const newFailedCount = currentFailedCount + 1;
                 
-                let failedGroups = [];
+      0         let failedGroups = [];
                 try {
                     if (latestFailedPost?.error_message && latestFailedPost.error_message.trim() !== '' && latestFailedPost.error_message !== 'null') {
                         const parsed = JSON.parse(latestFailedPost.error_message);
@@ -909,6 +909,7 @@ async function resetStuckBot1Posts() {
     }
 }
 
+// 🚀 المحرك الرئيسي الذكي للبوت الأول (يتفاعل مباشرة مع النشر الذكي)
 async function startBot1Engine() {
     await logToDashboard(`🚀 تم تشغيل محرك البوت الأول الرئيسي الذاتي بنجاح...`, 'success');
     
@@ -920,17 +921,7 @@ async function startBot1Engine() {
 
     while (true) {
         try {
-            // 🛑 فحص كرت الإيقاف في المحرك الرئيسي
-            const { data: counterStatus } = await supabase
-                .from('bot_counters')
-                .select('status')
-                .eq('bot_name', BOT_ID)
-                .single();
-
-            if (counterStatus && ['IDLE', 'STOPPED', 'PAUSED'].includes(counterStatus.status)) {
-                await forceKillProcess('تم رصد حالة الإيقاف في المحرك الرئيسي');
-            }
-
+            // 1️⃣ قراءة الطابور أولاً لمعرفة هل أضاف "النشر الذكي" إعلاناً جديداً
             const { data, error } = await supabase
                 .from('publish_queue')
                 .select('*')
@@ -959,28 +950,32 @@ async function startBot1Engine() {
                         try { hasBotGroup = !!JSON.parse(post.bot1_group); } catch(e){}
                     }
 
-                    if (groups.length > 0 || hasBotGroup) {
+                    // التأكد من وجود مجموعات وأن الإعلان ليس موقوفاً يدوياً
+                    if ((groups.length > 0 || hasBotGroup) && post.status !== 'stopped' && post.status !== 'paused') {
                         postToRun = post;
                         break;
                     }
                 }
             }
 
-            if (!postToRun) {
+            // 2️⃣ إذا وجد إعلان جديد أضيف بواسطة النشر الذكي، يفعّل العداد فوراً إلى RUNNING ويبدأ النشر
+            if (postToRun) {
+                await supabase.from('bot_counters').update({ status: 'RUNNING' }).eq('bot_name', BOT_ID);
+                await supabase.from('publish_queue').update({ status: 'processing' }).eq('id', postToRun.id);
+
+                await processOnePostBot1(postToRun);
+
+                await supabase.from('publish_queue').update({ status: 'stopped' }).eq('id', postToRun.id);
+
+                const macroDelay = randomDelay(900, 1800);
+                await logToDashboard(`⏳ استراحة الإعلانات الكبرى للبوت 1: انتظار ${Math.round(macroDelay / 1000 / 60)} دقيقة...`, 'info');
+                await sleep(macroDelay);
+            } else {
+                // 3️⃣ إذا لم يجد أي إعلانات في الطابور، يضع الحالة IDLE وينهي الجلسة بأمان
                 await logToDashboard(`🎉 اكتملت جميع المهام في الطابور، تم إنهاء الجلسة السحابية بنجاح!`, 'success');
                 await supabase.from('bot_counters').update({ status: 'IDLE' }).eq('bot_name', BOT_ID);
                 await forceKillProcess('لا توجد إعلانات تحتوي على مجموعات قيد الانتظار');
             }
-
-            await supabase.from('publish_queue').update({ status: 'processing' }).eq('id', postToRun.id);
-
-            await processOnePostBot1(postToRun);
-
-            await supabase.from('publish_queue').update({ status: 'stopped' }).eq('id', postToRun.id);
-
-            const macroDelay = randomDelay(900, 1800);
-            await logToDashboard(`⏳ استراحة الإعلانات الكبرى للبوت 1: انتظار ${Math.round(macroDelay / 1000 / 60)} دقيقة...`, 'info');
-            await sleep(macroDelay);
 
         } catch (err) {
             await logToDashboard(`❌ خطأ في محرك البوت الأول الرئيسي: ${err.message}`, 'error');
