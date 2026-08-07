@@ -805,7 +805,7 @@ async function processOnePostBot1(initialPostData) {
                 await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
             }
 
-            // 💡 --- فحص التكرار (الحل القاطع: فحص اللوج + تجاوز معلق الذاكرة محلياً) ---
+            // 💡 --- فحص التكرار (حذف المجموعة تماماً من العمود والطابور لضمان عدم التكرار) ---
             const { data: logData } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
@@ -815,35 +815,35 @@ async function processOnePostBot1(initialPostData) {
                 .eq('status', 'SUCCESS');
 
             if (logData && logData.length > 0) {
-                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! تجاوز المجموعة والتخطي فوراً...`, 'warn');
+                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها وإزالتها نهائياً...`, 'warn');
                 
-                // محاولة تصفير الحقل بالسيرفر
+                // 1. تحديث قاعدة البيانات لمسح العمود
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null, 
                     ai_final_text1: null 
                 }).eq('id', initialPostData.id);
 
-                // 🔑 الحل القاطع لمنع التعليق: إذا وجدنا أن هذه المجموعة نُشرت سابقاً، نقوم بإفراغ المتغير محلياً 
-                // ووضعها في مصفوفة التخطي المؤقتة للذاكرة لكي لا يعود البوت لقراءتها مرة أخرى أبداً حتى لو لم يستجب السيرفر!
-                botGroup = null;
-                
-                // إذا كان هناك مجموعات أخرى متبقية ننتقل لها فوراً
-                if (groups.length > 0) {
-                    targetGroup = groups[0];
-                    const remainingGroups = groups.slice(1);
-                    await supabase.from('publish_queue').update({
-                        bot1_group: JSON.stringify(targetGroup),
-                        groups_json: JSON.stringify(remainingGroups)
-                    }).eq('id', initialPostData.id);
-                } else {
-                    await supabase.from('publish_queue').update({
-                        bot1_group: null,
-                        ai_final_text1: null
-                    }).eq('id', initialPostData.id);
-                    break;
-                }
+                // 2. تصفير المتغير المحلي لكي لا يعلق البوت
+                botGroup = null; 
 
-                await sleep(1000);
+                // 3. 🛑 الإجراء الحاسم: إزالة هذه المجموعة بالكامل من groups_json إذا كانت لا تزال موجودة هناك لضمان حذفها تماماً
+                let currentGroups = [];
+                if (Array.isArray(freshData.groups_json)) {
+                    currentGroups = freshData.groups_json;
+                } else if (typeof freshData.groups_json === 'string') {
+                    try { currentGroups = JSON.parse(freshData.groups_json || '[]'); } catch(e){}
+                }
+                const filteredGroups = currentGroups.filter(g => g.name !== targetGroup.name);
+                
+                await supabase.from('publish_queue').update({
+                    groups_json: JSON.stringify(filteredGroups),
+                    bot1_group: null,
+                    ai_final_text1: null
+                }).eq('id', initialPostData.id);
+
+                await logToDashboard(`🗑️ تم حذف وإزالة المجموعة المكررة (${targetGroup.name}) من طابور البوت الأول نهائياً.`, 'success');
+
+                await sleep(1500);
                 continue;
             }
             // -----------------------------------------------------------
