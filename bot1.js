@@ -868,6 +868,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 botGroup = null;
                 
+                // 🔑 مسح المجموعة وتصفير bot1_group و ai_final_text1 فور إكمال النشر بنجاح
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
                     ai_final_text1: null,
