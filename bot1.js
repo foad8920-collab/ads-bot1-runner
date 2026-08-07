@@ -20,7 +20,6 @@ async function forceKillProcess(reason = 'طلب إيقاف من المستخد�
     await logToDashboard(`🛑 ${reason} | جاري تحويل الحالة إلى IDLE وإنهاء الجلسة فوراً...`, 'warn');
     
     try {
-        // 🔄 1. تحويل حالة البوت في جدول العدادات إلى IDLE فوراً
         await supabase
             .from('bot_counters')
             .update({ status: 'IDLE' })
@@ -30,7 +29,6 @@ async function forceKillProcess(reason = 'طلب إيقاف من المستخد�
         console.error("فشل تحديث حالة البوت إلى IDLE في قاعدة البيانات:", e.message);
     }
 
-    // 🛑 2. إلغاء الجلسة في GitHub Actions فوراً
     if (process.env.GITHUB_ACTIONS && process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID) {
         try {
             await axios.post(
@@ -70,7 +68,6 @@ async function checkAndResetCounter(botName) {
         if (data.last_reset_date !== todayStr) {
             await logToDashboard(`🔄 يوم جديد (${todayStr})! تم تصفير عداد ${botName} ومسح سجلات المجموعات القديمة.`, 'info');
             
-            // 🧹 مسح الجدول لإبقاء الصفحة وقاعدة البيانات نظيفة يومياً
             await supabase.from('bot_publish_logs').delete().neq('id', 0);
 
             await supabase
@@ -86,16 +83,12 @@ async function checkAndResetCounter(botName) {
     }
 }
 
-// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول (معدلة لضبط الوقت الفعلي بدقة ونص AI)
+// 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول
 async function logPublishSuccess(botName, adId, actualPostText, groupName) {
     try {
-        // 🛠️ توليد الوقت المحلي الدقيق بتوقيت السعودية لمنع تحويل الساعات لـ UTC
         const exactPublishTime = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Riyadh' }).replace(' ', 'T');
-
-        // قطع جزء مناسب من نص الذكاء الاصطناعي الفعلي بدلاً من النص الثابت
         const displayTitle = actualPostText ? (actualPostText.substring(0, 120) + '...') : 'إعلان بدون عنوان';
 
-        // تسجيل المجموعة المنشور فيها في جدول bot_publish_logs مع الوقت المضبوط صراحة
         const { error: insertError } = await supabase
             .from('bot_publish_logs')
             .insert([{
@@ -112,7 +105,6 @@ async function logPublishSuccess(botName, adId, actualPostText, groupName) {
             await logToDashboard(`❌ فشل حفظ اللوج في الجدول: ${insertError.message}`, 'error');
         }
 
-        // زيادة العداد اليومي والإجمالي في bot_counters
         const { data } = await supabase
             .from('bot_counters')
             .select('daily_count, total_count')
@@ -289,7 +281,6 @@ async function warmupSession(page) {
             throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب');
         }
 
-        // محاكاة التصفح وحركة الماوس والتمرير البشري
         await page.mouse.move(Math.floor(Math.random() * 500) + 120, Math.floor(Math.random() * 400) + 120);
         await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 300) + 200));
         await sleep(randomDelay(5, 8));
@@ -641,7 +632,6 @@ async function processOnePostBot1(initialPostData) {
         }
     }
 
-    // 🛠️ خيارات تشغيل متصفح آمنة ومطابقة للبشر تماماً (حذف الأعلام المكشوفة للبوتات)
     const launchOptions = {
         headless: true,
         args: [
@@ -710,7 +700,6 @@ async function processOnePostBot1(initialPostData) {
         await logToDashboard(`🍪 تم حقن الكوكيز بنجاح وتأمين الجلسة!`, 'success');
 
         while (true) {
-            // 🛑 1. فحص كروت الإيقاف الفورية المخصصة لـ bot1 حصراً
             const { data: counterStatus } = await supabase
                 .from('bot_counters')
                 .select('status')
@@ -732,7 +721,6 @@ async function processOnePostBot1(initialPostData) {
                 await forceKillProcess('تم رصد حالة الإيقاف يدوياً من اللوحة');
             }
 
-            // ⏭️ 2. التعامل مع زر تخطي المجموعة الحالية
             if (freshData.skip_current_group === true) {
                 await logToDashboard(`⏭️ تم طلب تخطي المجموعة الحالية بطلب من المستخدم، جاري الانتقال للتالي...`, 'info');
                 
@@ -764,20 +752,13 @@ async function processOnePostBot1(initialPostData) {
             }
 
             let botGroup = null;
-            const rawBotGroup = freshData.bot1_group;
-            
-            // 🛑 التحقق الصارم: تجاهل القيمة إذا كانت فارغة (Empty) أو نص فارغ أو null
-            if (rawBotGroup && typeof rawBotGroup === 'object' && Object.keys(rawBotGroup).length > 0) {
-                botGroup = rawBotGroup;
-            } else if (rawBotGroup && typeof rawBotGroup === 'string' && rawBotGroup.trim() !== '' && rawBotGroup.trim() !== '{}') {
-                try { 
-                    const parsed = JSON.parse(rawBotGroup);
-                    if (parsed && Object.keys(parsed).length > 0) botGroup = parsed;
-                } catch (e) {}
+            if (typeof freshData.bot1_group === 'object' && freshData.bot1_group !== null) {
+                botGroup = freshData.bot1_group;
+            } else if (typeof freshData.bot1_group === 'string') {
+                try { botGroup = freshData.bot1_group ? JSON.parse(freshData.bot1_group) : null; } catch (e) {}
             }
 
             if (groups.length === 0 && !botGroup) {
-                // 💡 التثبت من اكتمال كافة المجموعات لجميع البوتات قبل تغيير حالة الإعلان في الطابور
                 const { data: checkAllBots } = await supabase
                     .from('publish_queue')
                     .select('bot1_group, bot2_group, bot3_group, failed_count')
@@ -827,36 +808,34 @@ async function processOnePostBot1(initialPostData) {
                 await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
             }
 
-            // 💡 --- فحص التكرار وحل الحلقة التكرارية جذرياً (خاص بـ Bot1) ---
+            // 💡 --- فحص التكرار (الحل النهائي: إذا نُشرت سابقاً يُحذف عمود القروب بالكامل ويتم التخطي) ---
             const { data: logData } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
-                .eq('bot_name', BOT_ID)              // 1. التأكد من أن النشر تم عن طريق البوت الأول حصراً
-                .eq('ad_id', initialPostData.id)     // 2. مطابقة رقم الإعلان الحالي
-                .eq('group_name', targetGroup.name)  // 3. مطابقة اسم المجموعة
-                .eq('status', 'SUCCESS');            // 4. أن تكون حالة النشر ناجحة
+                .eq('bot_name', BOT_ID)
+                .eq('ad_id', initialPostData.id)
+                .eq('group_name', targetGroup.name)
+                .eq('status', 'SUCCESS');
 
             if (logData && logData.length > 0) {
-                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها والتخطي فوراً...`, 'warn');
+                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري تصفير الحقل والتخطي فوراً...`, 'warn');
                 
-                // 🧹 1. تصفير ومسح المجموعة المعلقة من قاعدة البيانات فوراً
+                // 🧹 تصفير عمود القروب الخاص بالبوت الأول لكي لا يعلق مجدداً
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null, 
                     ai_final_text1: null 
                 }).eq('id', initialPostData.id);
 
-                // 🧹 2. تصفير المتغير المحلي داخل ذاكرة السكربت فوراً لمنع التكرار بالحلقة
                 botGroup = null; 
-                await sleep(2000);
-                continue; // الانتقال للمجموعة التالية مباشرة دون إعادة قراءة نفس المجموعة
+                await sleep(1000);
+                continue; 
             }
-            // -----------------------------------------------------------
+            // ------------------------------------------------------------------------------------------
 
             const page = await context.newPage();
             try {
                 const publishTask = publishToGroup(page, targetGroup, freshData, imagePath);
                 
-                // 💡 رفع مهلة الأمان الكبرى لـ Deadlock Timeout إلى 15 دقيقة (900,000 مللي ثانية) بالكامل
                 const timeoutTask = new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('تجمّد مفاجئ أو بطء شديد أثناء معالجة الصفحة (Deadlock Timeout)')), 900000)
                 );
@@ -874,6 +853,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 botGroup = null;
                 
+                // 🧹 تصفير عمود القروب الخاص بالبوت الأول فوراً بعد النشر الناجح
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
                     ai_final_text1: null,
@@ -920,6 +900,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 botGroup = null;
                 
+                // تصفير عمود القروب حتى عند حدوث خطأ لكي لا يعلق الإعلان
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
                     ai_final_text1: null,
@@ -961,7 +942,6 @@ async function resetStuckBot1Posts() {
 async function startBot1Engine() {
     await logToDashboard(`🚀 تم تشغيل محرك البوت الأول الذاتي بنجاح...`, 'success');
     
-    // 💡 التحديث الفوري للحالة لمنع التوقف الخاطئ عند البداية
     await supabase.from('bot_counters').update({ status: 'RUNNING' }).eq('bot_name', BOT_ID);
 
     await resetStuckBot1Posts();
@@ -969,7 +949,6 @@ async function startBot1Engine() {
 
     while (true) {
         try {
-            // 🛑 فحص كرت الإيقاف في المحرك الرئيسي لـ bot1 حصراً
             const { data: counterStatus } = await supabase
                 .from('bot_counters')
                 .select('status')
