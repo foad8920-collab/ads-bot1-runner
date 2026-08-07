@@ -53,7 +53,7 @@ function getMemoryLog() {
     return `📊 [RAM: ${rssMB} MB | Heap: ${heapMB} MB]`;
 }
 
-// 🛠️ 1. دالة فحص التاريخ وتصفير العداد اليومي ومسح السجلات القديمة تلقائياً (معدلة بتوقيت الرياض)
+// 🛠️ 1. دالة فحص التاريخ وتصفير العداد اليومي ومسح السجلات القديمة تلقائياً
 async function checkAndResetCounter(botName) {
     try {
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
@@ -269,7 +269,7 @@ async function downloadImage(imageUrl) {
     return imagePath;
 }
 
-// 🎯 دالة إحماء الجلسة
+// 🎯 دالة إحماء الجلسة المتقدمة بأسلوب محاكي للبشر (خاصة للبوت الأول)
 async function warmupSession(page) {
     try {
         await logToDashboard(`☕ [Warm-up Human-Like] تسجيل الدخول وتصفح آخر الأخبار لتنويع السلوك للبوت الأول...`, 'info');
@@ -281,6 +281,7 @@ async function warmupSession(page) {
             throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب');
         }
 
+        // محاكاة التصفح وحركة الماوس والتمرير البشري
         await page.mouse.move(Math.floor(Math.random() * 500) + 120, Math.floor(Math.random() * 400) + 120);
         await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 300) + 200));
         await sleep(randomDelay(5, 8));
@@ -522,10 +523,11 @@ async function publishToGroup(page, group, post, imagePath) {
     
     await sleep(randomDelay(5, 8)); 
 
-    let postText = post.ai_final_text1 || '';
+    // 💡 تعديل قراءة النص هنا ليكون من العمود ai_final_text
+    let postText = post.ai_final_text || '';
     
     if (!postText || postText.trim() === '') {
-        await logToDashboard(`🧠 [AI] العمود ai_final_text1 فارغ، جاري صياغة نص جديد خصيصاً لمجموعة: ${group.name}...`, 'info');
+        await logToDashboard(`🧠 [AI] العمود ai_final_text فارغ، جاري صياغة نص جديد خصيصاً لمجموعة: ${group.name}...`, 'info');
         const aiGeneratedContent = await rewriteAdWithAI(post.ad_title, post.ad_description);
         postText = `${aiGeneratedContent}\n\n🔥 إعلان جديد على سوق الإعلانات الحديث`;
 
@@ -534,10 +536,11 @@ async function publishToGroup(page, group, post, imagePath) {
             postText += `\n\n${fbUrl.trim()}`;
         }
         
-        await supabase.from('publish_queue').update({ ai_final_text1: postText }).eq('id', post.id);
-        await logToDashboard(`💾 [Supabase] تم حفظ النص النهائي الخاص بهذه المجموعة في عمود (ai_final_text1).`, 'success');
+        // 💡 تحديث الحفظ ليكون في ai_final_text
+        await supabase.from('publish_queue').update({ ai_final_text: postText }).eq('id', post.id);
+        await logToDashboard(`💾 [Supabase] تم حفظ النص النهائي الخاص بهذه المجموعة في عمود (ai_final_text).`, 'success');
     } else {
-        await logToDashboard(`📌 [Supabase] تم جلب النص الجاهز من عمود (ai_final_text1).`, 'success');
+        await logToDashboard(`📌 [Supabase] تم جلب النص الجاهز من عمود (ai_final_text).`, 'success');
     }
 
     await logToDashboard(`📝 [Text] النص النهائي الذي سيتم لصقه:\n${postText}`, 'info');
@@ -610,6 +613,11 @@ async function processOnePostBot1(initialPostData) {
         await logToDashboard(`❌ ملف الكوكيز للبوت الأول غير موجود في جدول system_settings!`, 'error');
         return;
     }
+
+    // 💡 --- إضافة تأخير أمان ابتدائي للبوت الأول ---
+    const initialOffsetDelay = randomDelay(120, 240);
+    await logToDashboard(`⏳ [تنسيق التباعد] انتظار أمان لمدة ${Math.round(initialOffsetDelay / 1000)} ثانية...`, 'info');
+    await sleep(initialOffsetDelay);
 
     await logToDashboard(`🚀 بدأ معالجة الإعلان (#${initialPostData.id}: ${initialPostData.ad_title})...`, 'info');
 
@@ -737,7 +745,7 @@ async function processOnePostBot1(initialPostData) {
                 await supabase.from('publish_queue').update({
                     skip_current_group: false,
                     bot1_group: null,
-                    ai_final_text1: null,
+                    ai_final_text: null, // 💡 التحديث ليتوافق مع القاعدة
                     error_message: JSON.stringify(failedGroups)
                 }).eq('id', initialPostData.id);
 
@@ -776,7 +784,7 @@ async function processOnePostBot1(initialPostData) {
                     await supabase.from('publish_queue').update({
                         status: finalStatus,
                         bot1_group: null,
-                        ai_final_text1: null
+                        ai_final_text: null // 💡 التحديث ليتوافق مع القاعدة
                     }).eq('id', initialPostData.id);
                 } else {
                     await logToDashboard(`🎉 اكتملت جميع المجموعات المخصصة للبوت (1)! ينتهي البوت الأول مع استمرار البوتات الأخرى...`, 'success');
@@ -808,7 +816,7 @@ async function processOnePostBot1(initialPostData) {
                 await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
             }
 
-            // 💡 --- فحص التكرار (نسخة مطابقة ومحدثة) ---
+            // 💡 --- فحص التكرار ---
             const { data: logData } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
@@ -820,10 +828,9 @@ async function processOnePostBot1(initialPostData) {
             if (logData && logData.length > 0) {
                 await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها والتخطي فوراً...`, 'warn');
                 
-                // إضافة طباعة للخطأ لكي نكتشف إذا كان هناك شيء يمنع التحديث
                 const { error: clearErr } = await supabase.from('publish_queue').update({ 
                     bot1_group: null, 
-                    ai_final_text1: null 
+                    ai_final_text: null // 💡 التحديث ليتوافق مع القاعدة
                 }).eq('id', initialPostData.id);
 
                 if (clearErr) {
@@ -859,14 +866,14 @@ async function processOnePostBot1(initialPostData) {
                 
                 const { error: successClearErr } = await supabase.from('publish_queue').update({
                     bot1_group: null,
-                    ai_final_text1: null,
+                    ai_final_text: null, // 💡 التحديث ليتوافق مع القاعدة
                     success_count: newSuccessCount
                 }).eq('id', initialPostData.id);
 
                 if (successClearErr) {
                     await logToDashboard(`❌ فشل تفريغ قروب البوت بعد النشر: ${successClearErr.message}`, 'error');
                 } else {
-                    await logToDashboard(`🧹 تم تصفير (ai_final_text1) وقروب البوت وتحديث العداد لـ (${newSuccessCount}).`, 'success');
+                    await logToDashboard(`🧹 تم تفريغ قروب البوت وتصفير (ai_final_text) وتحديث العداد لـ (${newSuccessCount}).`, 'success');
                 }
 
                 const { data: checkData } = await supabase.from('publish_queue').select('groups_json').eq('id', initialPostData.id).single();
@@ -909,7 +916,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
-                    ai_final_text1: null,
+                    ai_final_text: null, // 💡 التحديث ليتوافق مع القاعدة
                     failed_count: newFailedCount,
                     error_message: JSON.stringify(failedGroups)
                 }).eq('id', initialPostData.id);
