@@ -766,10 +766,21 @@ async function processOnePostBot1(initialPostData) {
             }
 
             let botGroup = null;
-            if (typeof freshData.bot1_group === 'object' && freshData.bot1_group !== null) {
-                botGroup = freshData.bot1_group;
-            } else if (typeof freshData.bot1_group === 'string') {
-                try { botGroup = freshData.bot1_group ? JSON.parse(freshData.bot1_group) : null; } catch (e) {}
+            if (freshData.bot1_group) {
+                if (typeof freshData.bot1_group === 'object') {
+                    if (Object.keys(freshData.bot1_group).length > 0) botGroup = freshData.bot1_group;
+                } else if (typeof freshData.bot1_group === 'string') {
+                    const trimmed = freshData.bot1_group.trim();
+                    if (trimmed !== '' && trimmed !== '{}' && trimmed !== 'null') {
+                        try { 
+                            const parsed = JSON.parse(trimmed);
+                            if (parsed && Object.keys(parsed).length > 0) botGroup = parsed;
+                        } catch (e) {
+                            // إذا كان نصاً عادياً وليس JSON
+                            if (trimmed.length > 2) botGroup = { name: trimmed, url: trimmed };
+                        }
+                    }
+                }
             }
 
             if (groups.length === 0 && !botGroup) {
@@ -804,7 +815,7 @@ async function processOnePostBot1(initialPostData) {
 
             if (botGroup) {
                 targetGroup = botGroup;
-                await logToDashboard(`🎯 وُجدت مجموعة معلقة في قروب البوت (${targetGroup.name})، جاري التحقق منها...`, 'info');
+                await logToDashboard(`🎯 وُجدت مجموعة معلقة في قروب البوت (${targetGroup.name || targetGroup.url})، جاري التحقق منها...`, 'info');
             } else {
                 targetGroup = groups[0];
                 const remainingGroups = groups.slice(1);
@@ -822,28 +833,31 @@ async function processOnePostBot1(initialPostData) {
                 await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
             }
 
-            // 💡 --- فحص التكرار (مطابق تماماً للبوت الثاني) ---
+            // 💡 --- فحص التكرار (الحل الصارم: حذف المجموعة من قروب البوت وتخطيها فوراً) ---
+            const groupNameToVerify = targetGroup.name || targetGroup.url;
             const { data: logData } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
                 .eq('bot_name', BOT_ID)
                 .eq('ad_id', initialPostData.id)
-                .eq('group_name', targetGroup.name)
+                .eq('group_name', groupNameToVerify)
                 .eq('status', 'SUCCESS');
 
             if (logData && logData.length > 0) {
-                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها والتخطي فوراً...`, 'warn');
+                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${groupNameToVerify}) بواسطة ${BOT_ID}! جاري حذفها وتفريغ قروب البوت والتخطي فوراً...`, 'warn');
                 
+                // 🛑 تفريغ قروب البوت وحذفه نهائياً لكي لا يعلق أبداً
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null, 
                     ai_final_text1: null 
                 }).eq('id', initialPostData.id);
 
                 botGroup = null; 
+                targetGroup = null;
                 await sleep(2000);
                 continue; 
             }
-            // -----------------------------------------------------------
+            // ---------------------------------------------------------------------------
 
             const page = await context.newPage();
             try {
@@ -866,13 +880,14 @@ async function processOnePostBot1(initialPostData) {
                 
                 botGroup = null;
                 
+                // 🧹 تفريغ قروب البوت تماماً بعد النشر الناجح
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
                     ai_final_text1: null,
                     success_count: newSuccessCount
                 }).eq('id', initialPostData.id);
 
-                await logToDashboard(`🧹 تم تصفير (ai_final_text1) وقروب البوت وتحديث العداد لـ (${newSuccessCount}).`, 'success');
+                await logToDashboard(`🧹 تم تفريغ قروب البوت (bot1_group) وتصفير النص وتحديث العداد لـ (${newSuccessCount}).`, 'success');
 
                 const { data: checkData } = await supabase.from('publish_queue').select('groups_json').eq('id', initialPostData.id).single();
                 let currentRemaining = [];
@@ -912,6 +927,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 botGroup = null;
                 
+                // تفريغ قروب البوت حتى عند الفشل لكي لا يعلق الإعلان
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
                     ai_final_text1: null,
@@ -992,10 +1008,13 @@ async function startBot1Engine() {
                     }
 
                     let hasBotGroup = false;
-                    if (typeof post.bot1_group === 'object' && post.bot1_group !== null) {
-                        hasBotGroup = true;
-                    } else if (typeof post.bot1_group === 'string') {
-                        try { hasBotGroup = !!JSON.parse(post.bot1_group); } catch(e){}
+                    if (post.bot1_group) {
+                        if (typeof post.bot1_group === 'object') {
+                            if (Object.keys(post.bot1_group).length > 0) hasBotGroup = true;
+                        } else if (typeof post.bot1_group === 'string') {
+                            const trimmed = post.bot1_group.trim();
+                            if (trimmed !== '' && trimmed !== '{}' && trimmed !== 'null') hasBotGroup = true;
+                        }
                     }
 
                     if (groups.length > 0 || hasBotGroup) {
