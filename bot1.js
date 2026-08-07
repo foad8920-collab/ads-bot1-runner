@@ -269,6 +269,7 @@ async function downloadImage(imageUrl) {
     return imagePath;
 }
 
+// 🎯 دالة إحماء الجلسة
 async function warmupSession(page) {
     try {
         await logToDashboard(`☕ [Warm-up Anti-Checkpoint] تصفح بشرِي عميق وتنقُّل محاكي لحماية الحساب الرئيسي...`, 'info');
@@ -748,14 +749,8 @@ async function processOnePostBot1(initialPostData) {
                 try { groups = JSON.parse(freshData.groups_json || '[]'); } catch (e) {}
             }
 
-            let botGroup = null;
-            if (typeof freshData.bot1_group === 'object' && freshData.bot1_group !== null) {
-                botGroup = freshData.bot1_group;
-            } else if (typeof freshData.bot1_group === 'string') {
-                try { botGroup = freshData.bot1_group ? JSON.parse(freshData.bot1_group) : null; } catch (e) {}
-            }
-
-            if (groups.length === 0 && !botGroup) {
+            // 🛑 التحقق من انتهاء المجموعات
+            if (groups.length === 0) {
                 const { data: checkAllBots } = await supabase
                     .from('publish_queue')
                     .select('bot1_group, bot2_group, bot3_group, failed_count')
@@ -783,29 +778,19 @@ async function processOnePostBot1(initialPostData) {
                 break;
             }
 
-            let targetGroup = null;
+            // 🎯 السحب المباشر والآمن لأول مجموعة من القائمة
+            let targetGroup = groups[0];
+            let remainingGroups = groups.slice(1);
 
-            if (botGroup) {
-                targetGroup = botGroup;
-                await logToDashboard(`🎯 وُجدت مجموعة معلقة في قروب البوت (${targetGroup.name})، جاري التحقق منها...`, 'info');
-            } else {
-                targetGroup = groups[0];
-                const remainingGroups = groups.slice(1);
+            // تحديث الطابور وحذف المجموعة فوراً من القائمة لكي لا تُقرأ مجدداً
+            await supabase.from('publish_queue').update({
+                bot1_group: JSON.stringify(targetGroup),
+                groups_json: JSON.stringify(remainingGroups)
+            }).eq('id', initialPostData.id);
 
-                const { error: updateErr } = await supabase.from('publish_queue').update({
-                    bot1_group: JSON.stringify(targetGroup),
-                    groups_json: JSON.stringify(remainingGroups)
-                }).eq('id', initialPostData.id);
+            await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) للفحص والنشر...`, 'info');
 
-                if (updateErr) {
-                    await sleep(1000);
-                    continue;
-                }
-
-                await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
-            }
-
-            // 💡 --- فحص التكرار (حذف المجموعة تماماً من العمود والطابور لضمان عدم التكرار) ---
+            // 💡 --- فحص التكرار القاطع: إذا نُشرت سابقاً يتم حذفها بالكامل من الطابور فوراً والتخطي ---
             const { data: logData } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
@@ -815,38 +800,18 @@ async function processOnePostBot1(initialPostData) {
                 .eq('status', 'SUCCESS');
 
             if (logData && logData.length > 0) {
-                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها وإزالتها نهائياً...`, 'warn');
+                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها نهائياً من الطابور والتخطي...`, 'warn');
                 
-                // 1. تحديث قاعدة البيانات لمسح العمود
+                // تصفير عمود البوت ومسح أي أثر لها لضمان عدم التعليق
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null, 
                     ai_final_text1: null 
                 }).eq('id', initialPostData.id);
 
-                // 2. تصفير المتغير المحلي لكي لا يعلق البوت
-                botGroup = null; 
-
-                // 3. 🛑 الإجراء الحاسم: إزالة هذه المجموعة بالكامل من groups_json إذا كانت لا تزال موجودة هناك لضمان حذفها تماماً
-                let currentGroups = [];
-                if (Array.isArray(freshData.groups_json)) {
-                    currentGroups = freshData.groups_json;
-                } else if (typeof freshData.groups_json === 'string') {
-                    try { currentGroups = JSON.parse(freshData.groups_json || '[]'); } catch(e){}
-                }
-                const filteredGroups = currentGroups.filter(g => g.name !== targetGroup.name);
-                
-                await supabase.from('publish_queue').update({
-                    groups_json: JSON.stringify(filteredGroups),
-                    bot1_group: null,
-                    ai_final_text1: null
-                }).eq('id', initialPostData.id);
-
-                await logToDashboard(`🗑️ تم حذف وإزالة المجموعة المكررة (${targetGroup.name}) من طابور البوت الأول نهائياً.`, 'success');
-
-                await sleep(1500);
-                continue;
+                await sleep(1000);
+                continue; // الانتقال للمجموعة التالية فوراً دون فتح المتصفح
             }
-            // -----------------------------------------------------------
+            // -----------------------------------------------------------------------------------
 
             const page = await context.newPage();
             try {
@@ -866,8 +831,6 @@ async function processOnePostBot1(initialPostData) {
 
                 const currentSuccessCount = latestSuccessPost?.success_count || 0;
                 const newSuccessCount = currentSuccessCount + 1;
-                
-                botGroup = null;
                 
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
@@ -912,8 +875,6 @@ async function processOnePostBot1(initialPostData) {
                 failedGroups.push({ name: targetGroup.name, url: targetGroup.url, error: err.message });
 
                 await logToDashboard(`❌ خطأ أثناء النشر في المجموعة (${targetGroup.name}): ${err.message}`, 'error');
-                
-                botGroup = null;
                 
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
