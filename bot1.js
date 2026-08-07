@@ -749,7 +749,6 @@ async function processOnePostBot1(initialPostData) {
                 try { groups = JSON.parse(freshData.groups_json || '[]'); } catch (e) {}
             }
 
-            // 🛑 التحقق من انتهاء المجموعات
             if (groups.length === 0) {
                 const { data: checkAllBots } = await supabase
                     .from('publish_queue')
@@ -778,19 +777,23 @@ async function processOnePostBot1(initialPostData) {
                 break;
             }
 
-            // 🎯 السحب المباشر والآمن لأول مجموعة من القائمة
+            // 🎯 السحب المباشر والآمن تماماً مثل البوت الثاني
             let targetGroup = groups[0];
-            let remainingGroups = groups.slice(1);
+            const remainingGroups = groups.slice(1);
 
-            // تحديث الطابور وحذف المجموعة فوراً من القائمة لكي لا تُقرأ مجدداً
-            await supabase.from('publish_queue').update({
+            const { error: updateErr } = await supabase.from('publish_queue').update({
                 bot1_group: JSON.stringify(targetGroup),
                 groups_json: JSON.stringify(remainingGroups)
             }).eq('id', initialPostData.id);
 
-            await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) للفحص والنشر...`, 'info');
+            if (updateErr) {
+                await sleep(1000);
+                continue;
+            }
 
-            // 💡 --- فحص التكرار القاطع: إذا نُشرت سابقاً يتم حذفها بالكامل من الطابور فوراً والتخطي ---
+            await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
+
+            // 💡 --- فحص التكرار (مطابق تماماً للبوت الثاني مع مسح العمود والتخطي الفوري) ---
             const { data: logData } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
@@ -800,18 +803,18 @@ async function processOnePostBot1(initialPostData) {
                 .eq('status', 'SUCCESS');
 
             if (logData && logData.length > 0) {
-                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها نهائياً من الطابور والتخطي...`, 'warn');
+                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها والتخطي فوراً...`, 'warn');
                 
-                // تصفير عمود البوت ومسح أي أثر لها لضمان عدم التعليق
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null, 
                     ai_final_text1: null 
                 }).eq('id', initialPostData.id);
 
-                await sleep(1000);
-                continue; // الانتقال للمجموعة التالية فوراً دون فتح المتصفح
+                let botGroup = null; 
+                await sleep(2000);
+                continue; 
             }
-            // -----------------------------------------------------------------------------------
+            // ---------------------------------------------------------------------------
 
             const page = await context.newPage();
             try {
