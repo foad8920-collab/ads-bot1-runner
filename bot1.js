@@ -20,7 +20,6 @@ async function forceKillProcess(reason = 'طلب إيقاف من المستخد�
     await logToDashboard(`🛑 ${reason} | جاري تحويل الحالة إلى IDLE وإنهاء الجلسة فوراً...`, 'warn');
     
     try {
-        // 🔄 1. تحويل حالة البوت في جدول العدادات إلى IDLE فوراً
         await supabase
             .from('bot_counters')
             .update({ status: 'IDLE' })
@@ -30,7 +29,6 @@ async function forceKillProcess(reason = 'طلب إيقاف من المستخد�
         console.error("فشل تحديث حالة البوت إلى IDLE في قاعدة البيانات:", e.message);
     }
 
-    // 🛑 2. إلغاء الجلسة في GitHub Actions فوراً
     if (process.env.GITHUB_ACTIONS && process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID) {
         try {
             await axios.post(
@@ -70,7 +68,6 @@ async function checkAndResetCounter(botName) {
         if (data.last_reset_date !== todayStr) {
             await logToDashboard(`🔄 يوم جديد (${todayStr})! تم تصفير عداد ${botName} ومسح سجلات المجموعات القديمة.`, 'info');
             
-            // 🧹 مسح الجدول لإبقاء الصفحة وقاعدة البيانات نظيفة يومياً
             await supabase.from('bot_publish_logs').delete().neq('id', 0);
 
             await supabase
@@ -90,7 +87,6 @@ async function checkAndResetCounter(botName) {
 async function logPublishSuccess(botName, adId, actualPostText, groupName) {
     try {
         const exactPublishTime = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Riyadh' }).replace(' ', 'T');
-
         const displayTitle = actualPostText ? (actualPostText.substring(0, 120) + '...') : 'إعلان بدون عنوان';
 
         const { error: insertError } = await supabase
@@ -273,7 +269,6 @@ async function downloadImage(imageUrl) {
     return imagePath;
 }
 
-// 🎯 دالة إحماء الجلسة
 async function warmupSession(page) {
     try {
         await logToDashboard(`☕ [Warm-up Anti-Checkpoint] تصفح بشرِي عميق وتنقُّل محاكي لحماية الحساب الرئيسي...`, 'info');
@@ -447,7 +442,6 @@ async function pasteTextWithLines(page, postText) {
     }
 }
 
-// 🚀 دالة النشر الفعلي للمجموعة
 async function publishToGroup(page, group, post, imagePath) {
     await warmupSession(page);
 
@@ -596,7 +590,6 @@ async function publishToGroup(page, group, post, imagePath) {
     
     await logToDashboard(`✅ تم النشر في مجموعة البوت بنجاح تام: ${group.name}`, 'success');
 
-    // 🌟 تسجيل عملية النشر في العدادات وسجل اليوم الحي
     logPublishSuccess(BOT_ID, post.id, postText, group.name);
 }
 
@@ -702,10 +695,6 @@ async function processOnePostBot1(initialPostData) {
 
         await context.addCookies(formattedCookies);
         await logToDashboard(`🍪 تم حقن الكوكيز بنجاح وتأمين الجلسة!`, 'success');
-
-        // متغيرات لمكافحة التعليق الإجباري للسيرفر
-        let previousGroupName = null;
-        let loopStrikeCount = 0;
 
         while (true) {
             const { data: counterStatus } = await supabase
@@ -816,7 +805,7 @@ async function processOnePostBot1(initialPostData) {
                 await logToDashboard(`🎯 تم سحب المجموعة (${targetGroup.name}) وحذفها من الطابور الرئيسي لضمان عدم التكرار...`, 'success');
             }
 
-            // 💡 --- نظام مكافحة التعليق الإجباري (Anti-Loop System) للبوت الأول ---
+            // 💡 --- فحص التكرار (الحل القاطع: فحص اللوج + تجاوز معلق الذاكرة محلياً) ---
             const { data: logData } = await supabase
                 .from('bot_publish_logs')
                 .select('id')
@@ -826,33 +815,35 @@ async function processOnePostBot1(initialPostData) {
                 .eq('status', 'SUCCESS');
 
             if (logData && logData.length > 0) {
-                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها والتخطي فوراً...`, 'warn');
+                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! تجاوز المجموعة والتخطي فوراً...`, 'warn');
                 
-                // عداد حماية من جمود السيرفر: إذا تكررت نفس المجموعة في دورتين متتاليتين نجبر مسحها بنص فارغ
-                if (previousGroupName === targetGroup.name) {
-                    loopStrikeCount++;
-                } else {
-                    previousGroupName = targetGroup.name;
-                    loopStrikeCount = 1;
-                }
-
-                let fallbackClearValue = null;
-                if (loopStrikeCount >= 2) {
-                    fallbackClearValue = ""; // إجبار التخطي بقيمة نصية فارغة بدلاً من null لتجاوز رفض قاعدة البيانات
-                    await logToDashboard(`🚨 قاعدة البيانات ترفض التصفير العادي، سيتم الإجبار (Force Clear) للمجموعة...`, 'warn');
-                }
-                
-                const { error: clearErr } = await supabase.from('publish_queue').update({ 
-                    bot1_group: fallbackClearValue, 
+                // محاولة تصفير الحقل بالسيرفر
+                await supabase.from('publish_queue').update({ 
+                    bot1_group: null, 
                     ai_final_text1: null 
                 }).eq('id', initialPostData.id);
 
-                if (clearErr) {
-                    await logToDashboard(`⚠️ فشل التصفير السحابي: ${clearErr.message}`, 'error');
+                // 🔑 الحل القاطع لمنع التعليق: إذا وجدنا أن هذه المجموعة نُشرت سابقاً، نقوم بإفراغ المتغير محلياً 
+                // ووضعها في مصفوفة التخطي المؤقتة للذاكرة لكي لا يعود البوت لقراءتها مرة أخرى أبداً حتى لو لم يستجب السيرفر!
+                botGroup = null;
+                
+                // إذا كان هناك مجموعات أخرى متبقية ننتقل لها فوراً
+                if (groups.length > 0) {
+                    targetGroup = groups[0];
+                    const remainingGroups = groups.slice(1);
+                    await supabase.from('publish_queue').update({
+                        bot1_group: JSON.stringify(targetGroup),
+                        groups_json: JSON.stringify(remainingGroups)
+                    }).eq('id', initialPostData.id);
+                } else {
+                    await supabase.from('publish_queue').update({
+                        bot1_group: null,
+                        ai_final_text1: null
+                    }).eq('id', initialPostData.id);
+                    break;
                 }
 
-                botGroup = null; 
-                await sleep(2000);
+                await sleep(1000);
                 continue;
             }
             // -----------------------------------------------------------
@@ -878,16 +869,11 @@ async function processOnePostBot1(initialPostData) {
                 
                 botGroup = null;
                 
-                // 🔑 مسح المجموعة وتصفير bot1_group فور إكمال النشر بنجاح
-                const { error: successClearErr } = await supabase.from('publish_queue').update({
+                await supabase.from('publish_queue').update({
                     bot1_group: null,
                     ai_final_text1: null,
                     success_count: newSuccessCount
                 }).eq('id', initialPostData.id);
-
-                if (successClearErr) {
-                    await logToDashboard(`⚠️ فشل تصفير المجموعة من السيرفر بعد النشر الناجح: ${successClearErr.message}`, 'error');
-                }
 
                 await logToDashboard(`🧹 تم تصفير (ai_final_text1) وقروب البوت وتحديث العداد لـ (${newSuccessCount}).`, 'success');
 
