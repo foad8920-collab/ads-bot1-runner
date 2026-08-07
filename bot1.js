@@ -831,19 +831,27 @@ async function processOnePostBot1(initialPostData) {
                 .eq('status', 'SUCCESS');            // 4. أن تكون حالة النشر ناجحة
 
             if (logData && logData.length > 0) {
-                await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها والتخطي فوراً...`, 'warn');
-                
-                // 🧹 1. تصفير ومسح المجموعة المعلقة من قاعدة البيانات فوراً
-                await supabase.from('publish_queue').update({ 
-                    bot1_group: null, 
-                    ai_final_text1: null 
-                }).eq('id', initialPostData.id);
+    await logToDashboard(`🛡️ [حماية] الإعلان (#${initialPostData.id}) نُشر مسبقاً في المجموعة (${targetGroup.name}) بواسطة ${BOT_ID}! جاري حذفها والتخطي فوراً...`, 'warn');
+    
+    // 🧹 1. مسح وتصفير المجموعة في Supabase مع انتظار اكتمال التحديث
+    const { error: clearErr } = await supabase.from('publish_queue').update({ 
+        bot1_group: null, 
+        ai_final_text1: null 
+    }).eq('id', initialPostData.id);
 
-                // 🧹 2. تصفير المتغير المحلي داخل ذاكرة السكربت فوراً لمنع التكرار بالحلقة
-                botGroup = null; 
-                await sleep(2000);
-                continue; // الانتقال للمجموعة التالية مباشرة دون إعادة قراءة نفس المجموعة
-            }
+    if (clearErr) {
+        console.error("فشل مسح المجموعة المعلقة:", clearErr.message);
+    }
+
+    // 🧹 2. تصفير جميع المتغيرات المحلية في الذاكرة فوراً لمنع إعادة قراءتها داخل الحلقة
+    botGroup = null;
+    targetGroup = null;
+    freshData.bot1_group = null;
+    freshData.ai_final_text1 = null;
+
+    await sleep(3000);
+    continue; // الانتقال الصريح والدائم للمجموعة التالية
+}
             // -----------------------------------------------------------
 
             const page = await context.newPage();
