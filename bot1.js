@@ -764,10 +764,16 @@ async function processOnePostBot1(initialPostData) {
             }
 
             let botGroup = null;
-            if (typeof freshData.bot1_group === 'object' && freshData.bot1_group !== null) {
-                botGroup = freshData.bot1_group;
-            } else if (typeof freshData.bot1_group === 'string') {
-                try { botGroup = freshData.bot1_group ? JSON.parse(freshData.bot1_group) : null; } catch (e) {}
+            const rawBotGroup = freshData.bot1_group;
+            
+            // 🛑 التحقق الصارم: تجاهل القيمة إذا كانت فارغة (Empty) أو نص فارغ أو null
+            if (rawBotGroup && typeof rawBotGroup === 'object' && Object.keys(rawBotGroup).length > 0) {
+                botGroup = rawBotGroup;
+            } else if (rawBotGroup && typeof rawBotGroup === 'string' && rawBotGroup.trim() !== '' && rawBotGroup.trim() !== '{}') {
+                try { 
+                    const parsed = JSON.parse(rawBotGroup);
+                    if (parsed && Object.keys(parsed).length > 0) botGroup = parsed;
+                } catch (e) {}
             }
 
             if (groups.length === 0 && !botGroup) {
