@@ -265,28 +265,28 @@ async function downloadImage(imageUrl) {
     return imagePath;
 }
 
-// 🎯 دالة إحماء الجلسة المتقدمة بأسلوب محاكي للبشر لحماية الحساب من Checkpoint
+// 🎯 دالة إحماء الجلسة المتقدمة بأسلوب محاكي للبشر لحماية الحساب الرئيسي من Checkpoint
 async function warmupSession(page) {
     try {
-        await logToDashboard(`☕ [Warm-up Anti-Checkpoint] تسجيل الدخول وتصفح آخر الأخبار لتنويع السلوك للبوت الأول...`, 'info');
+        await logToDashboard(`☕ [Warm-up Anti-Checkpoint] تصفح بشرِي عميق وتنقُّل محاكي لحماية الحساب الرئيسي...`, 'info');
         
         await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await sleep(randomDelay(8, 14));
+        await sleep(randomDelay(10, 16));
 
         if (page.url().includes('login') || page.url().includes('checkpoint')) {
             throw new Error('انتهت جلسة تسجيل الدخول أو يوجد Checkpoint للحساب');
         }
 
-        // محاكاة حركات الماوس والتمرير العشوائي البشري
+        // محاكاة حركات الماوس والتمرير العشوائي البشري الممتد للحساب الرئيسي
         await page.mouse.move(Math.floor(Math.random() * 500) + 100, Math.floor(Math.random() * 400) + 100);
         await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 350) + 150));
-        await sleep(randomDelay(4, 7));
+        await sleep(randomDelay(5, 9));
         
         await page.mouse.move(Math.floor(Math.random() * 600) + 200, Math.floor(Math.random() * 500) + 150);
         await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 450) + 200));
-        await sleep(randomDelay(5, 9));
+        await sleep(randomDelay(6, 11));
 
-        await logToDashboard(`✅ تم إحماء الجلسة ومحاكاة السلوك البشري بنجاح!`, 'success');
+        await logToDashboard(`✅ تم إحماء الجلسة ومحاكاة السلوك البشري للحساب الرئيسي بنجاح!`, 'success');
     } catch (e) {
         if (e.message.includes('Checkpoint')) throw e;
         await logToDashboard(`⚠️ تنبيه أثناء الإحماء: ${e.message}`, 'warn');
@@ -294,7 +294,7 @@ async function warmupSession(page) {
 }
 
 async function openPostBox(page) {
-    const initialWait = randomDelay(18, 25);
+    const initialWait = randomDelay(20, 28);
     await logToDashboard(`⏳ إعطاء فيسبوك مهلة ${Math.round(initialWait/1000)} ثانية لبناء الأزرار ومربع النشر...`, 'info');
     await sleep(initialWait); 
 
@@ -311,7 +311,7 @@ async function openPostBox(page) {
             const tabBtn = page.locator(tabSel).first();
             if (await tabBtn.count() > 0 && await tabBtn.isVisible()) {
                 await tabBtn.click({ timeout: 5000, force: true });
-                const tabWait = randomDelay(15, 22);
+                const tabWait = randomDelay(18, 25);
                 await logToDashboard(`🔄 تم التبديل لتبويب (مناقشة)، ننتظر ${Math.round(tabWait/1000)} ثانية لاستقرار التبويب...`, 'info');
                 await sleep(tabWait); 
                 break;
@@ -356,11 +356,11 @@ async function openPostBox(page) {
                 const box = await element.boundingBox();
                 if (box) {
                     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-                    await sleep(randomDelay(1, 2));
+                    await sleep(randomDelay(2, 4));
                 }
                 await element.click({ timeout: 6000, force: true });
                 
-                const postOpenWait = randomDelay(18, 24);
+                const postOpenWait = randomDelay(20, 28);
                 await logToDashboard(`⏳ تم النقر لفتح نافذة المنشور، ننتظر ${Math.round(postOpenWait/1000)} ثانية لتفتح النافذة براحتها...`, 'info');
                 await sleep(postOpenWait); 
 
@@ -370,7 +370,7 @@ async function openPostBox(page) {
                         const btn = page.locator(cBtn).first();
                         if (await btn.count() > 0 && await btn.isVisible()) {
                             await btn.click({ timeout: 3000, force: true });
-                            await sleep(randomDelay(2, 4));
+                            await sleep(randomDelay(2, 5));
                         }
                     } catch(e){}
                 }
@@ -384,7 +384,7 @@ async function openPostBox(page) {
 }
 
 async function pasteTextWithLines(page, postText) {
-    await sleep(randomDelay(5, 8)); 
+    await sleep(randomDelay(6, 10)); 
 
     const targetSelectors = [
         'div[role="dialog"] div[role="textbox"]',
@@ -413,7 +413,7 @@ async function pasteTextWithLines(page, postText) {
     if (textbox) {
         try {
             await textbox.click({ timeout: 6000, force: true });
-            await sleep(randomDelay(2, 4)); 
+            await sleep(randomDelay(3, 5)); 
             await page.evaluate(async (text) => {
                 await navigator.clipboard.writeText(text);
             }, postText);
@@ -433,7 +433,7 @@ async function pasteTextWithLines(page, postText) {
                 activeInput.click();
             }
         });
-        await sleep(randomDelay(2, 4));
+        await sleep(randomDelay(3, 5));
         await page.keyboard.insertText(postText);
         await logToDashboard(`✅ تم إدخال النص بطريقة البديلة (insertText)`, 'success');
     } catch(e) {
@@ -449,7 +449,7 @@ async function publishToGroup(page, group, post, imagePath) {
     
     await page.goto(group.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     
-    const pageLoadWait = randomDelay(35, 45);
+    const pageLoadWait = randomDelay(40, 55);
     await logToDashboard(`⏳ تم تحميل الصفحة، ننتظر ${Math.round(pageLoadWait/1000)} ثانية كاملة لاستقرار عناصر الصفحة وبناء السكربتات...`, 'info');
     await sleep(pageLoadWait); 
 
@@ -460,7 +460,7 @@ async function publishToGroup(page, group, post, imagePath) {
     const opened = await openPostBox(page);
     if (!opened) throw new Error('لم يتم العثور على مربع النشر');
 
-    await sleep(randomDelay(5, 10)); 
+    await sleep(randomDelay(6, 12)); 
 
     if (imagePath) {
         const imageTriggerSelectors = [
@@ -478,7 +478,7 @@ async function publishToGroup(page, group, post, imagePath) {
                 const trigElement = page.locator(trigSel).first();
                 if (await trigElement.count() > 0 && await trigElement.isVisible()) {
                     await trigElement.click({ timeout: 6000, force: true });
-                    await sleep(randomDelay(4, 7)); 
+                    await sleep(randomDelay(5, 8)); 
                     break;
                 }
             } catch (e) {}
@@ -502,23 +502,23 @@ async function publishToGroup(page, group, post, imagePath) {
 
         if (isFileInjected) {
             const isVideoFile = imagePath.endsWith('.mp4') || imagePath.endsWith('.mov');
-            const waitTime = isVideoFile ? randomDelay(65, 80) : randomDelay(25, 35);
+            const waitTime = isVideoFile ? randomDelay(75, 95) : randomDelay(30, 42);
 
             await logToDashboard(`🖼️ تم حقن مسار الملف، ننتظر ${Math.round(waitTime/1000)} ثانية لرفع الملف...`, 'success');
             await sleep(waitTime);
 
             try {
-                await page.waitForSelector('img[src*="blob:"], video, [aria-label*="إزالة"], [aria-label*="Remove"]', { timeout: 30000 });
+                await page.waitForSelector('img[src*="blob:"], video, [aria-label*="إزالة"], [aria-label*="Remove"]', { timeout: 35000 });
                 await logToDashboard(`✅ ظهرت معاينة المرفق بنجاح`, 'success');
             } catch (e) {}
 
-            const previewWait = randomDelay(25, 35);
+            const previewWait = randomDelay(30, 42);
             await logToDashboard(`⏳ ننتظر ${Math.round(previewWait/1000)} ثانية إضافية لاستقرار المعاينة...`, 'info');
             await sleep(previewWait); 
         }
     }
     
-    await sleep(randomDelay(5, 8)); 
+    await sleep(randomDelay(6, 10)); 
 
     let postText = post.ai_final_text1 || '';
     
@@ -544,11 +544,11 @@ async function publishToGroup(page, group, post, imagePath) {
 
     let fbUrlCheck = post.facebook_url || '';
     if (fbUrlCheck.trim() !== '' || postText.includes('facebook.com')) {
-        const linkWait = randomDelay(50, 65);
+        const linkWait = randomDelay(55, 75);
         await logToDashboard(`⏳ تم إدراج رابط فيسبوك، ننتظر ${Math.round(linkWait/1000)} ثانية كاملة ليتفاعل النظام وتظهر المعاينة...`, 'info');
         await sleep(linkWait);
     } else {
-        const textWait = randomDelay(28, 38);
+        const textWait = randomDelay(35, 48);
         await logToDashboard(`⏳ تم لصق النص، ننتظر ${Math.round(textWait/1000)} ثانية ليتفاعل النظام مع النص المُدخل...`, 'info');
         await sleep(textWait); 
     }
@@ -570,7 +570,7 @@ async function publishToGroup(page, group, post, imagePath) {
                 const btnBox = await button.boundingBox();
                 if (btnBox) {
                     await page.mouse.move(btnBox.x + btnBox.width / 2, btnBox.y + btnBox.height / 2);
-                    await sleep(randomDelay(1, 2));
+                    await sleep(randomDelay(2, 4));
                 }
                 await button.click({ timeout: 8000, force: true });
                 published = true;
@@ -583,7 +583,7 @@ async function publishToGroup(page, group, post, imagePath) {
     if (!published) throw new Error('فشل العثور على زر النشر أو تعذر الضغط عليه');
     
     let isUploadedVideo = imagePath && (imagePath.endsWith('.mp4') || imagePath.endsWith('.mov'));
-    let finalWait = isUploadedVideo ? randomDelay(65, 80) : randomDelay(35, 45);
+    let finalWait = isUploadedVideo ? randomDelay(75, 95) : randomDelay(40, 55);
 
     await logToDashboard(`⏳ انتظار استقرار النشر نهائياً لمدة ${Math.round(finalWait/1000)} ثانية لضمان إرسال المنشور...`, 'info');
     await sleep(finalWait); 
@@ -822,8 +822,10 @@ async function processOnePostBot1(initialPostData) {
             const page = await context.newPage();
             try {
                 const publishTask = publishToGroup(page, targetGroup, freshData, imagePath);
+                
+                // 💡 رفع مهلة الأمان الكبرى لـ Deadlock Timeout إلى 15 دقيقة (900,000 مللي ثانية) بالكامل
                 const timeoutTask = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('تجمّد مفاجئ أو بطء شديد أثناء معالجة الصفحة (Deadlock Timeout)')), 360000)
+                    setTimeout(() => reject(new Error('تجمّد مفاجئ أو بطء شديد أثناء معالجة الصفحة (Deadlock Timeout)')), 900000)
                 );
 
                 await Promise.race([publishTask, timeoutTask]);
@@ -856,8 +858,8 @@ async function processOnePostBot1(initialPostData) {
                 }
 
                 if (currentRemaining.length > 0) {
-                    const longBreak = randomDelay(180, 300);
-                    await logToDashboard(`⏳ استراحة أمان لحماية الحساب لمدة ${Math.round(longBreak / 1000 / 60)} دقائق قبل المجموعة التالية...`, 'info');
+                    const longBreak = randomDelay(200, 360);
+                    await logToDashboard(`⏳ استراحة أمان لحماية الحساب الرئيسي لمدة ${Math.round(longBreak / 1000 / 60)} دقائق قبل المجموعة التالية...`, 'info');
                     await sleep(longBreak);
                 }
 
