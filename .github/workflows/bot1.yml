@@ -3,7 +3,7 @@ name: Run Facebook Bot 1
 on:
   workflow_dispatch:
 
-# 🔒 منع التزامن وتكرار التشغيل: يوقف أي جلسة سابقة شغالة للبوت1 فوراً عند إطلاق جلسة جديدة
+# 🔒 منع التزامن وتكرار التشغيل
 concurrency:
   group: bot1-execution-group
   cancel-in-progress: true
@@ -16,15 +16,22 @@ jobs:
       - name: 📥 جلب كود المستودع
         uses: actions/checkout@v4
 
+      # 💡 إضافة جديدة: تغيير توقيت السيرفر ليتطابق مع منطقتنا (يمنع شكوك فيسبوك)
+      - name: ⏱️ ضبط توقيت السيرفر الزمني
+        run: |
+          sudo timedatectl set-timezone Asia/Riyadh
+          date
+
       - name: 🟢 إعداد بيئة Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
+      # 💡 إضافة جديدة: تثبيت مكتبات التخفي (Stealth) لخداع خوارزميات فيسبوك
       - name: 📦 تثبيت المكتبات (Dependencies)
         run: |
           npm init -y
-          npm install playwright @supabase/supabase-js axios ws express
+          npm install playwright playwright-extra puppeteer-extra-plugin-stealth @supabase/supabase-js axios ws express
 
       - name: 🌐 تثبيت متصفح Chromium الخاص بـ Playwright
         run: |
