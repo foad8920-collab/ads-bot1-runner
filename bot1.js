@@ -89,7 +89,8 @@ async function checkAndResetCounter(botName) {
 // 🛠️ 2. دالة تسجيل النشر الناجح وتحديث المجموعات والعدادات للبوت الأول
 async function logPublishSuccess(botName, adId, actualPostText, groupName) {
     try {
-        const exactPublishTime = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Aden' }).replace(' ', 'T') + '+03:00';
+        // 💡 التعديل هنا: استخدام توقيت UTC لضبط لوحة التحكم وحل مشكلة الـ 3 ساعات
+        const exactPublishTime = new Date().toISOString();
         const displayTitle = actualPostText ? (actualPostText.substring(0, 120) + '...') : 'إعلان بدون عنوان';
 
         const { error: insertError } = await supabase
@@ -528,7 +529,6 @@ async function publishToGroup(page, group, post, imagePath) {
     
     await sleep(randomDelay(6, 9)); 
 
-    // 💡 قراءة النص وتحديثه متوافقاً مع ai_final_text (بدون رقم 1)
     let postText = post.ai_final_text || '';
     
     if (!postText || postText.trim() === '') {
@@ -671,10 +671,9 @@ async function processOnePostBot1(initialPostData) {
 
     const browser = await chromium.launch(launchOptions);
 
+    // 💡 التعديل هنا: تم إزالة timezoneId و locale لكي يطابق المتصفح توقيت السيرفر الأمريكي 100%
     const context = await browser.newContext({
         viewport: { width: 1280, height: 800 },
-        timezoneId: 'Asia/Aden', // توقيت مطابق للمنطقة الجغرافية
-        locale: 'ar-YE',         // لغة مطابقة للمنطقة
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         permissions: ['clipboard-read', 'clipboard-write'],
         colorScheme: 'dark',
@@ -757,7 +756,7 @@ async function processOnePostBot1(initialPostData) {
                 await supabase.from('publish_queue').update({
                     skip_current_group: false,
                     bot1_group: null,
-                    ai_final_text: null, // 💡 التحديث ليتوافق مع القاعدة
+                    ai_final_text: null,
                     error_message: JSON.stringify(failedGroups)
                 }).eq('id', initialPostData.id);
 
@@ -796,7 +795,7 @@ async function processOnePostBot1(initialPostData) {
                     await supabase.from('publish_queue').update({
                         status: finalStatus,
                         bot1_group: null,
-                        ai_final_text: null // 💡 التحديث ليتوافق مع القاعدة
+                        ai_final_text: null
                     }).eq('id', initialPostData.id);
                 } else {
                     await logToDashboard(`🎉 اكتملت جميع المجموعات المخصصة للبوت (1)! ينتهي البوت الأول مع استمرار البوتات الأخرى...`, 'success');
@@ -842,7 +841,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null, 
-                    ai_final_text: null // 💡 التحديث ليتوافق مع القاعدة
+                    ai_final_text: null
                 }).eq('id', initialPostData.id);
 
                 botGroup = null; 
@@ -873,7 +872,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 await supabase.from('publish_queue').update({
                     bot1_group: null,
-                    ai_final_text: null, // 💡 التحديث ليتوافق مع القاعدة
+                    ai_final_text: null,
                     success_count: newSuccessCount
                 }).eq('id', initialPostData.id);
 
@@ -888,7 +887,6 @@ async function processOnePostBot1(initialPostData) {
                 }
 
                 if (currentRemaining.length > 0) {
-                    // استراحة أمان عشوائية تماماً بين 12 دقيقة و 20 دقيقة
                     const longBreak = randomDelay(720, 1200);
                     await logToDashboard(`⏳ استراحة أمان مخصصة للحساب لمدة ${Math.round(longBreak / 1000 / 60)} دقائق قبل المجموعة التالية...`, 'info');
                     await sleep(longBreak);
@@ -904,15 +902,10 @@ async function processOnePostBot1(initialPostData) {
                 if (isCheckpoint) {
                     await logToDashboard(`🚨 [خطر] تم رصد التشيك بوينت (Checkpoint) أو خروج من الحساب! جاري إيقاف البوت لحماية الحساب...`, 'error');
                     
-                    // تحديث الحالة لـ FACEBOOK_CHECKPOINT لكي تنتبه لها
                     await supabase.from('bot_counters').update({ status: 'FACEBOOK_CHECKPOINT' }).eq('bot_name', BOT_ID);
-                    
-                    // تفريغ القروب المعلق لكي لا يفسد الإعلان (💡 باستخدام ai_final_text)
                     await supabase.from('publish_queue').update({ bot1_group: null, ai_final_text: null }).eq('id', initialPostData.id);
-                    
-                    // قتل العملية كلياً كما فعل كود ChatGPT
                     await forceKillProcess('اكتشاف Checkpoint من فيسبوك');
-                    return; // الخروج التام
+                    return; 
                 }
                 // 👉🚨 نهاية الدمج 🚨👈
 
@@ -941,7 +934,7 @@ async function processOnePostBot1(initialPostData) {
                 
                 await supabase.from('publish_queue').update({ 
                     bot1_group: null,
-                    ai_final_text: null, // 💡 التحديث ليتوافق مع القاعدة
+                    ai_final_text: null,
                     failed_count: newFailedCount,
                     error_message: JSON.stringify(failedGroups)
                 }).eq('id', initialPostData.id);
@@ -980,7 +973,6 @@ async function resetStuckBot1Posts() {
 async function startBot1Engine() {
     await logToDashboard(`🚀 تم تشغيل محرك البوت الأول الذاتي بنجاح...`, 'success');
     
-    // 💡 التحديث الفوري للحالة لمنع التوقف الخاطئ عند البداية
     await supabase.from('bot_counters').update({ status: 'RUNNING' }).eq('bot_name', BOT_ID);
 
     await resetStuckBot1Posts();
@@ -988,7 +980,6 @@ async function startBot1Engine() {
 
     while (true) {
         try {
-            // 🛑 فحص كرت الإيقاف في المحرك الرئيسي لـ bot1 حصراً
             const { data: counterStatus } = await supabase
                 .from('bot_counters')
                 .select('status')
